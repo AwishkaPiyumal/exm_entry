@@ -4,8 +4,32 @@ The Examination Entry System is a digital platform designed to streamline univer
 
 ## Description
 
-An in-depth paragraph about your project and overview of use.abcd
+An in-depth paragraph about your project and overview of use.
 
+## Overview of the System
+
+    Administrator Operations:
+        Create Degree Programs.
+        Define Subjects for Degree Programs.
+        Assign Subject In-Charge (Staff).
+        Create Batches for Degree Programs.
+        Add Students to Batches.
+
+    Attendance and Exam Entry:
+        Students’ attendance is monitored.
+        Students apply for exams based on attendance eligibility.
+
+    Staff In-Charge Approval:
+        Subject In-Charge reviews attendance.
+        Approve or reject students for exams.
+
+    Summary Reporting:
+        Generate a summary of approved students per subject.
+        Send the summary to HoD and Dean.
+
+    Document Generation:
+        Generate admission cards for approved students.
+        Generate attendance sheets for each subject.
 ## Getting Started
 
 ### Dependencies

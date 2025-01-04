@@ -39,7 +39,7 @@ const faculties = () => {
                     batch_id: obj.batch_id,
                   },
                 }}
-                className="w-[30%] hover:shadow-md rounded-xl"
+                className="min-w-[30%] max-w-[30%] hover:shadow-md rounded-xl"
                 key={obj.batch_id}
               >
                 <Card>

@@ -17,6 +17,11 @@ export const createFaculty = async (data) => {
   return response.data;
 };
 
+export const updateFacultyStatus = async (data) => {
+  const response = await axiosInstance.put("/course/updateFacultyStatus", data);
+  return response.data;
+};
+
 export const updateFaculty = async (data) => {
   const response = await axiosInstance.put("/course/updateFaculty", data);
   return response.data;
@@ -64,6 +69,14 @@ export const updateDepartment = async (data) => {
   return response.data;
 };
 
+export const updateDepartmentStatus = async (data) => {
+  const response = await axiosInstance.put(
+    "/course/updateDepartmentStatus",
+    data
+  );
+  return response.data;
+};
+
 export const getDepartmentById = async (d_id) => {
   const response = await axiosInstance.post("/course/getDepartmentById", {
     d_id,
@@ -100,6 +113,11 @@ export const updateDegree = async (data) => {
   return response.data;
 };
 
+export const updateDegreeStatus = async (data) => {
+  const response = await axiosInstance.put("/course/updateDegreeStatus", data);
+  return response.data;
+};
+
 export const getDegreeById = async (deg_id) => {
   const response = await axiosInstance.post("/course/getDegreeById", {
     deg_id,
@@ -113,7 +131,6 @@ export const getDegreesByDepartmentId = async (d_id) => {
     { d_id }
   );
 
-  console.log(response.data);
   return response.data;
 };
 
@@ -142,5 +159,13 @@ export const getActiveDegreesInADepartmentWithLevelsCount = async (d_id) => {
     "/course/getActiveDegreesInADepartmentWithLevelsCount",
     { d_id }
   );
+  return response.data;
+};
+
+export const getDegreeByShort = async (short) => {
+  const response = await axiosInstance.post("/course/getDegreeByShort", {
+    short,
+  });
+
   return response.data;
 };

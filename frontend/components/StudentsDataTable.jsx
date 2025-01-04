@@ -1,16 +1,19 @@
 "use client";
 
 import {
-  ColumnDef,
   flexRender,
   getCoreRowModel,
   useReactTable,
   getPaginationRowModel,
-  SortingState,
   getSortedRowModel,
 } from "@tanstack/react-table";
 import { Button } from "@/components/ui/button";
-
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   Table,
   TableBody,
@@ -20,9 +23,17 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useState } from "react";
-
-export function DataTable({ columns, data }) {
+import { FaPlus } from "react-icons/fa6";
+import { TfiImport } from "react-icons/tfi";
+export function StudentsDataTable({
+  columns,
+  data,
+  onEditClicked,
+  toggleModal,
+  toggleImportModal,
+}) {
   const [sorting, setSorting] = useState([]);
+  const [columnVisibility, setColumnVisibility] = useState({});
 
   const table = useReactTable({
     data,
@@ -31,13 +42,60 @@ export function DataTable({ columns, data }) {
     getPaginationRowModel: getPaginationRowModel(),
     onSortingChange: setSorting,
     getSortedRowModel: getSortedRowModel(),
+    onColumnVisibilityChange: setColumnVisibility,
+
     state: {
       sorting,
+      columnVisibility,
     },
   });
 
   return (
     <div>
+      <div className="flex items-center mb-4">
+        <Button
+          onClick={toggleModal}
+          className="flex items-center bg-primary text-primary-foreground shadow hover:bg-primary/90 rounded-md px-3 py-2 mb-3 text-sm mr-3"
+        >
+          <FaPlus />
+          &nbsp;Create student
+        </Button>
+        <Button
+          onClick={toggleImportModal}
+          className="flex items-center bg-primary text-primary-foreground shadow hover:bg-primary/90 rounded-md px-3 py-2 mb-3 text-sm"
+        >
+          <TfiImport />
+          &nbsp;Import students
+        </Button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline" className="ml-auto mb-2">
+              Columns
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            {table
+              .getAllColumns()
+              .filter((column) => column.getCanHide())
+              .map((column) => {
+                return (
+                  <DropdownMenuCheckboxItem
+                    key={column.id}
+                    className="capitalize"
+                    checked={column.getIsVisible()}
+                    onCheckedChange={(value) =>
+                      column.toggleVisibility(!!value)
+                    }
+                  >
+                    {typeof column.columnDef.header == "string"
+                      ? column.columnDef.header
+                      : column.id}
+                  </DropdownMenuCheckboxItem>
+                );
+              })}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
       <div className="rounded-md bg-white capitalize">
         <Table>
           <TableHeader>
@@ -66,7 +124,7 @@ export function DataTable({ columns, data }) {
                   data-state={row.getIsSelected() && "selected"}
                 >
                   {row.getVisibleCells().map((cell) => (
-                    <TableCell key={cell.id}>
+                    <TableCell key={cell.id} onClick={(e) => onEditClicked(e)}>
                       {flexRender(
                         cell.column.columnDef.cell,
                         cell.getContext()

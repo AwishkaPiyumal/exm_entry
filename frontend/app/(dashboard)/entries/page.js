@@ -31,7 +31,7 @@ const entries = () => {
                   f_id: obj.f_id,
                 },
               }}
-              className="w-[30%] hover:shadow-md rounded-xl"
+              className="min-w-[30%] max-w-[30%] hover:shadow-md rounded-xl"
               key={obj.f_id}
             >
               <Card>

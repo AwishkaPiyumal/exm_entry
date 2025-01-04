@@ -26,7 +26,6 @@ import {
 
 const Model = ({ editId, isOpen, setIsOpen, modalRef, setEditId }) => {
   const [formData, setFormData] = useState({
-    status: "true",
     levels: [],
     no_of_sem_per_year: "2",
   });
@@ -79,8 +78,6 @@ const Model = ({ editId, isOpen, setIsOpen, modalRef, setEditId }) => {
         ...curData,
         [e.target?.name]: e.target?.value,
       }));
-    } else if (typeof e == "boolean") {
-      setFormData((curData) => ({ ...curData, status: e.toString() }));
     } else {
       setFormData((curData) => ({
         ...curData,
@@ -91,14 +88,12 @@ const Model = ({ editId, isOpen, setIsOpen, modalRef, setEditId }) => {
 
   const onFormSubmitted = () => {
     mutate(formData);
-    setFormData({ status: "true", levels: [], no_of_sem_per_year: "2" });
+    setFormData({ levels: [], no_of_sem_per_year: "2" });
     setIsOpen(false);
   };
 
   const onFormReset = () => {
-    setFormData(
-      data || { status: "true", levels: [], no_of_sem_per_year: "2" }
-    );
+    setFormData(data || { levels: [], no_of_sem_per_year: "2" });
   };
 
   const onSemCountChanged = (e) => {
@@ -151,7 +146,6 @@ const Model = ({ editId, isOpen, setIsOpen, modalRef, setEditId }) => {
                 onClick={() => {
                   setIsOpen(false);
                   setFormData({
-                    status: "true",
                     levels: [],
                     no_of_sem_per_year: "2",
                   });
@@ -169,6 +163,10 @@ const Model = ({ editId, isOpen, setIsOpen, modalRef, setEditId }) => {
                   name="deg_name"
                   className="col-span-3"
                   onChange={(e) => onFormDataChanged(e)}
+                  onBlur={(e) => {
+                    e.target.value = e.target.value.trim();
+                    onFormDataChanged(e);
+                  }}
                   value={formData.deg_name || ""}
                 />
               </div>
@@ -181,6 +179,12 @@ const Model = ({ editId, isOpen, setIsOpen, modalRef, setEditId }) => {
                   name="short"
                   className="col-span-3 uppercase"
                   onChange={(e) => {
+                    let ele = e;
+                    ele.target.value = ele.target.value.toUpperCase();
+                    onFormDataChanged(ele);
+                  }}
+                  onBlur={(e) => {
+                    e.target.value = e.target.value.trim();
                     let ele = e;
                     ele.target.value = ele.target.value.toUpperCase();
                     onFormDataChanged(ele);
@@ -283,24 +287,6 @@ const Model = ({ editId, isOpen, setIsOpen, modalRef, setEditId }) => {
                   onChange={(e) => onFormDataChanged(e)}
                   value={formData.no_of_sem_per_year || ""}
                 />
-              </div>
-              <div className="grid grid-cols-4 gap-4">
-                <Label className="text-right">Status</Label>
-                <div className="items-top flex space-x-2 col-span-3 items-center">
-                  <Checkbox
-                    id="status"
-                    onCheckedChange={(e) => onFormDataChanged(e)}
-                    checked={formData?.status === "true"}
-                  />
-                  <div className="grid gap-1.5 leading-none">
-                    <label
-                      htmlFor="status"
-                      className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
-                    >
-                      Active
-                    </label>
-                  </div>
-                </div>
               </div>
             </div>
             <div className="flex justify-between space-x-2 mt-4">

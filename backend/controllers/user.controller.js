@@ -5,25 +5,13 @@ export const getAllStudents = async (req, res, next) => {
   try {
     const conn = await pool.getConnection();
     try {
-      const [students] = await conn.execute(
-        `SELECT 
-            u.user_id, 
-            u.user_name, 
-            sd.name, 
-            sd.d_id, 
-            u.email, 
-            sd.status 
-          FROM user u
-          INNER JOIN student s ON u.user_id = s.user_id
-          INNER JOIN student_detail sd ON s.s_id = sd.s_id
-          WHERE u.role_id = 5`
-      );
+      const [students] = await conn.query("CALL GetAllStudents();");
 
-      if (!students.length) {
+      if (!students[0].length) {
         return res.status(404).json({ message: "No students found" });
       }
 
-      return res.status(200).json(students);
+      return res.status(200).json(students[0]);
     } catch (error) {
       console.error("Error retrieving students:", error);
       return next(
@@ -42,22 +30,13 @@ export const getAllManagers = async (req, res, next) => {
   try {
     const conn = await pool.getConnection();
     try {
-      const [managers] = await conn.execute(
-        `SELECT 
-            u.user_id, 
-            u.user_name, 
-            md.name, 
-            u.email, 
-            md.contact_no, 
-            md.status,
-            md.m_id 
-          FROM user u
-          INNER JOIN manager m ON u.user_id = m.user_id
-          INNER JOIN manager_detail md ON m.m_id = md.m_id
-          WHERE u.role_id = 4`
-      );
+      const [managers] = await conn.query("CALL GetAllManagers();");
 
-      return res.status(200).json(managers);
+      if (!managers[0].length) {
+        return res.status(404).json({ message: "No managers found" });
+      }
+
+      return res.status(200).json(managers[0]);
     } catch (error) {
       console.error("Error retrieving managers:", error);
       return next(
@@ -76,22 +55,17 @@ export const getAllActiveManagers = async (req, res, next) => {
   try {
     const conn = await pool.getConnection();
     try {
-      const [managers] = await conn.execute(
-        `SELECT 
-            md.name, 
-            u.email, 
-            md.contact_no, 
-            md.status,
-            md.m_id 
-          FROM manager m INNER JOIN manager_detail md ON m.m_id = md.m_id INNER JOIN user u ON m.user_id = u.user_id
-          WHERE md.status = 'true'`
-      );
+      const [managers] = await conn.query("CALL GetAllActiveManagers();");
 
-      return res.status(200).json(managers);
+      if (!managers[0].length) {
+        return res.status(404).json({ message: "No active managers found" });
+      }
+
+      return res.status(200).json(managers[0]);
     } catch (error) {
-      console.error("Error retrieving managers:", error);
+      console.error("Error retrieving active managers:", error);
       return next(
-        errorProvider(500, "An error occurred while retrieving managers")
+        errorProvider(500, "An error occurred while retrieving active managers")
       );
     } finally {
       conn.release();
@@ -108,27 +82,13 @@ export const getManagerById = async (req, res, next) => {
   try {
     const conn = await pool.getConnection();
     try {
-      const [manager] = await conn.execute(
-        `SELECT 
-            u.user_id, 
-            u.user_name, 
-            md.name, 
-            u.email, 
-            md.contact_no, 
-            md.status,
-            md.m_id 
-          FROM user u
-          INNER JOIN manager m ON u.user_id = m.user_id
-          INNER JOIN manager_detail md ON m.m_id = md.m_id
-          WHERE u.user_id = ?`,
-        [user_id]
-      );
+      const [manager] = await conn.query("CALL GetManagerById(?);", [user_id]);
 
-      if (!manager.length) {
+      if (!manager[0].length) {
         return res.status(404).json({ message: "No manager found" });
       }
 
-      return res.status(200).json(manager[0]);
+      return res.status(200).json(manager[0][0]);
     } catch (error) {
       console.error("Error retrieving manager:", error);
       return next(
@@ -149,29 +109,13 @@ export const getStudentById = async (req, res, next) => {
   try {
     const conn = await pool.getConnection();
     try {
-      const [student] = await conn.execute(
-        `SELECT 
-            u.user_id, 
-            u.user_name, 
-            sd.name, 
-            u.email, 
-            sd.status,
-            sd.s_id,
-            sd.d_id,
-            fd.f_id
-          FROM user u
-          INNER JOIN student s ON u.user_id = s.user_id
-          INNER JOIN student_detail sd ON s.s_id = sd.s_id
-          INNER JOIN fac_dep fd ON fd.d_id = sd.d_id 
-          WHERE u.user_id = ?`,
-        [user_id]
-      );
+      const [student] = await conn.query("CALL GetStudentById(?);", [user_id]);
 
-      if (!student.length) {
+      if (!student[0].length) {
         return res.status(404).json({ message: "No student found" });
       }
 
-      return res.status(200).json(student[0]);
+      return res.status(200).json(student[0][0]);
     } catch (error) {
       console.error("Error retrieving student:", error);
       return next(
@@ -192,24 +136,21 @@ export const getStudentByDegShort = async (req, res, next) => {
   try {
     const conn = await pool.getConnection();
     try {
-      const [students] = await conn.execute(
-        `SELECT sd.s_id,sd.name FROM student_detail sd INNER JOIN dep_deg dd ON sd.d_id = dd.d_id INNER JOIN degree d ON dd.deg_id = d.deg_id WHERE d.short = ? AND sd.status = 'true'`,
-        [short]
-      );
+      const [students] = await conn.query("CALL GetStudentsByDegreeShort(?);", [
+        short,
+      ]);
 
-      if (!students.length) {
+      if (!students[0].length) {
         return res
           .status(404)
-          .json({ message: "No students found in current department" });
+          .json({ message: "No students found in current faculty" });
       }
 
-      console.log(students);
-
-      return res.status(200).json(students);
+      return res.status(200).json(students[0]);
     } catch (error) {
-      console.error("Error retrieving student:", error);
+      console.error("Error retrieving students:", error);
       return next(
-        errorProvider(500, "An error occurred while retrieving student")
+        errorProvider(500, "An error occurred while retrieving students")
       );
     } finally {
       conn.release();
@@ -221,34 +162,65 @@ export const getStudentByDegShort = async (req, res, next) => {
 };
 
 export const updateStudent = async (req, res, next) => {
+  const {
+    name,
+    f_id,
+    email,
+    s_id,
+    user_name,
+    contact_no,
+    index_num = "",
+  } = req.body;
+  console.log(contact_no, index_num);
+  if (!s_id || !name || !f_id || !email || !user_name) {
+    return next(errorProvider(400, "Missing required fields"));
+  }
+
   try {
     const conn = await pool.getConnection();
     try {
-      const { name, d_id, email, status, s_id } = req.body;
-
-      const [result] = await conn.execute(
-        `UPDATE student_detail 
-          SET 
-            name = ?, 
-            d_id = ?, 
-            status = ? 
-          WHERE s_id = ?`,
-        [name, d_id, status, s_id]
+      const [results] = await conn.query(
+        "CALL UpdateStudent(?, ?, ?, ?, ?, ?, ?);",
+        [name, f_id, s_id, email, user_name, contact_no, index_num]
       );
-
-      const [emailResult] = await conn.execute(
-        `UPDATE user u INNER JOIN student s ON u.user_id = s.user_id SET u.email = ? WHERE s.s_id = ?`,
-        [email, s_id]
-      );
-
-      if (result.length === 0) {
-        return res
-          .status(404)
-          .json({ message: "Student not found or no changes made" });
-      }
-
+      console.log(results);
       return res.status(200).json({ message: "Student updated successfully" });
     } catch (error) {
+      if (error.sqlMessage?.includes("Email or username already exists")) {
+        return next(errorProvider(409, "Email or username already exists"));
+      }
+      console.error("Error updating student:", error);
+      return next(
+        errorProvider(500, "An error occurred while updating the student")
+      );
+    } finally {
+      conn.release();
+    }
+  } catch (error) {
+    console.error("Database connection error:", error);
+    return next(errorProvider(500, "Failed to establish database connection"));
+  }
+};
+
+export const updateStudentStatus = async (req, res, next) => {
+  const { status, id: s_id } = req.body;
+
+  if (!s_id || !status) {
+    return next(errorProvider(400, "Missing required fields"));
+  }
+
+  try {
+    const conn = await pool.getConnection();
+    try {
+      await conn.query("CALL updateStudentStatus(?, ?);", [status, s_id]);
+
+      return res
+        .status(200)
+        .json({ message: "Student status updated successfully" });
+    } catch (error) {
+      if (error.sqlMessage?.includes("Email or username already exists")) {
+        return next(errorProvider(409, "Email or username already exists"));
+      }
       console.error("Error updating student:", error);
       return next(
         errorProvider(500, "An error occurred while updating the student")
@@ -263,33 +235,56 @@ export const updateStudent = async (req, res, next) => {
 };
 
 export const updateManager = async (req, res, next) => {
-  const { name, email, contact_no, status, m_id } = req.body;
+  const { name, email, contact_no, m_id, user_name } = req.body;
+
+  if (!m_id || !name || !email || !contact_no || !user_name) {
+    return next(errorProvider(400, "Missing required fields"));
+  }
 
   try {
     const conn = await pool.getConnection();
     try {
-      const [result] = await conn.execute(
-        `UPDATE manager_detail 
-          SET 
-            name = ?, 
-            contact_no = ?, 
-            status = ? 
-          WHERE m_id = ?`,
-        [name, contact_no, status, m_id]
-      );
-
-      const [emailResult] = await conn.execute(
-        `UPDATE user u INNER JOIN manager m ON u.user_id = m.user_id SET u.email = ? WHERE m.m_id = ?`,
-        [email, m_id]
-      );
-
-      if (result.length === 0) {
-        return res
-          .status(404)
-          .json({ message: "Manager not found or no changes made" });
-      }
+      await conn.query("CALL UpdateManager(?, ?, ?, ?, ?);", [
+        name,
+        email,
+        user_name,
+        contact_no,
+        m_id,
+      ]);
 
       return res.status(200).json({ message: "Manager updated successfully" });
+    } catch (error) {
+      if (error.sqlMessage?.includes("Email or username already exists")) {
+        return next(errorProvider(409, "Email or username already exists"));
+      }
+      console.error("Error updating manager:", error);
+      return next(
+        errorProvider(500, "An error occurred while updating the manager")
+      );
+    } finally {
+      conn.release();
+    }
+  } catch (error) {
+    console.error("Database connection error:", error);
+    return next(errorProvider(500, "Failed to establish database connection"));
+  }
+};
+
+export const updateManagerStatus = async (req, res, next) => {
+  const { status, id: m_id } = req.body;
+
+  if (!m_id || !status) {
+    return next(errorProvider(400, "Missing required fields"));
+  }
+
+  try {
+    const conn = await pool.getConnection();
+    try {
+      await conn.query("CALL updateManagerStatus(?, ?);", [status, m_id]);
+
+      return res
+        .status(200)
+        .json({ message: "Manager status updated successfully" });
     } catch (error) {
       console.error("Error updating manager:", error);
       return next(
@@ -304,92 +299,13 @@ export const updateManager = async (req, res, next) => {
   }
 };
 
-export const deleteUser = async (req, res, next) => {
-  //const { user_id } = req.body;
-
-  const user_id = 1;
-
-  if (!user_id) {
-    return res.status(400).json({
-      message: "user_id is required",
-    });
-  }
-
-  try {
-    const conn = await pool.getConnection();
-    try {
-      await conn.beginTransaction();
-
-      const [student] = await conn.execute(
-        `SELECT s_id FROM student WHERE user_id = ?`,
-        [user_id]
-      );
-
-      if (student.length > 0) {
-        const s_id = student[0].s_id;
-
-        await conn.execute(`DELETE FROM student_detail WHERE s_id = ?`, [s_id]);
-        await conn.execute(`DELETE FROM student WHERE user_id = ?`, [user_id]);
-      } else {
-        const [manager] = await conn.execute(
-          `SELECT m_id FROM manager WHERE user_id = ?`,
-          [user_id]
-        );
-
-        if (manager.length > 0) {
-          const m_id = manager[0].m_id;
-
-          await conn.execute(`DELETE FROM manager_detail WHERE m_id = ?`, [
-            m_id,
-          ]);
-
-          await conn.execute(`DELETE FROM manager WHERE user_id = ?`, [
-            user_id,
-          ]);
-        }
-      }
-
-      const [result] = await conn.execute(
-        `DELETE FROM user WHERE user_id = ?`,
-        [user_id]
-      );
-
-      await conn.commit();
-
-      if (result.affectedRows === 0) {
-        return res.status(404).json({
-          message: "User not found",
-        });
-      }
-      return res.status(200).json({
-        message: "User deleted successfully",
-      });
-    } catch (error) {
-      console.error("Error deleting user:", error);
-
-      await conn.rollback();
-
-      return next(
-        errorProvider(500, "An error occurred while deleting the user")
-      );
-    } finally {
-      conn.release();
-    }
-  } catch (error) {
-    console.error("Database connection error:", error);
-    return next(errorProvider(500, "Failed to establish database connection"));
-  }
-};
-
 export const getNoOfManagers = async (req, res, next) => {
   try {
     const conn = await pool.getConnection();
     try {
-      const [result] = await conn.execute(
-        "SELECT COUNT(*) AS manager_count FROM manager"
-      );
+      const [result] = await conn.query("CALL GetNoOfManagers();");
 
-      const { manager_count } = result[0];
+      const { manager_count } = result[0][0];
 
       return res.status(200).json({
         count: manager_count,
@@ -397,7 +313,7 @@ export const getNoOfManagers = async (req, res, next) => {
     } catch (error) {
       console.error("Error retrieving number of managers:", error);
       return next(
-        errorProvider(500, "An error occurred while the manager count")
+        errorProvider(500, "An error occurred while fetching the manager count")
       );
     } finally {
       conn.release();
@@ -412,11 +328,9 @@ export const getNoOfStudents = async (req, res, next) => {
   try {
     const conn = await pool.getConnection();
     try {
-      const [result] = await conn.execute(
-        "SELECT COUNT(*) AS student_count FROM student"
-      );
+      const [result] = await conn.query("CALL GetNoOfStudents();");
 
-      const { student_count } = result[0];
+      const { student_count } = result[0][0];
 
       return res.status(200).json({
         count: student_count,

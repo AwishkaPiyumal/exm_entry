@@ -17,13 +17,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  getAllFaculties,
-  getDepartmentsByFacultyId,
-} from "@/utils/apiRequests/course.api";
+import { getAllFaculties } from "@/utils/apiRequests/course.api";
 
 const Model = ({ editId, isOpen, setIsOpen, modalRef, setEditId }) => {
-  const [formData, setFormData] = useState({ status: "true" });
+  const [formData, setFormData] = useState({});
   const [btnEnable, setBtnEnable] = useState(false);
   const queryClient = useQueryClient();
 
@@ -47,20 +44,10 @@ const Model = ({ editId, isOpen, setIsOpen, modalRef, setEditId }) => {
     enabled: false,
   });
 
-  const { data: facultyData, refetch: facultyRefetch } = useQuery({
+  const { data: facultyData } = useQuery({
     queryFn: getAllFaculties,
     queryKey: ["faculties"],
   });
-
-  const { data: departmentData, refetch: departmentRefetch } = useQuery({
-    queryFn: () => formData.f_id && getDepartmentsByFacultyId(formData?.f_id),
-    queryKey: ["departments", "faculty", formData?.f_id],
-    enabled: false,
-  });
-
-  useEffect(() => {
-    formData?.f_id && departmentRefetch();
-  }, [formData.f_id]);
 
   useEffect(() => {
     if (data) setFormData(data);
@@ -72,8 +59,6 @@ const Model = ({ editId, isOpen, setIsOpen, modalRef, setEditId }) => {
         ...curData,
         [e.target?.name]: e.target?.value,
       }));
-    } else if (typeof e == "boolean") {
-      setFormData((curData) => ({ ...curData, status: e.toString() }));
     } else {
       setFormData((curData) => ({
         ...curData,
@@ -84,12 +69,12 @@ const Model = ({ editId, isOpen, setIsOpen, modalRef, setEditId }) => {
 
   const onFormSubmitted = () => {
     mutate(formData);
-    setFormData({ status: "true" });
+    setFormData({});
     setIsOpen(false);
   };
 
   const onFormReset = () => {
-    setFormData(data || { status: "true" });
+    setFormData(data || {});
   };
 
   useEffect(() => {
@@ -97,8 +82,8 @@ const Model = ({ editId, isOpen, setIsOpen, modalRef, setEditId }) => {
       formData.name &&
       formData.user_name &&
       formData.email &&
-      formData.f_id &&
-      formData.d_id;
+      formData.contact_no &&
+      formData.f_id;
     setBtnEnable(isFormValid);
   }, [formData]);
 
@@ -121,7 +106,7 @@ const Model = ({ editId, isOpen, setIsOpen, modalRef, setEditId }) => {
                 className="text-2xl hover:cursor-pointer hover:text-zinc-700"
                 onClick={() => {
                   setIsOpen(false);
-                  setFormData({ status: "true" });
+                  setFormData({});
                   setEditId("");
                 }}
               />
@@ -137,6 +122,10 @@ const Model = ({ editId, isOpen, setIsOpen, modalRef, setEditId }) => {
                   name="name"
                   className="col-span-3"
                   onChange={(e) => onFormDataChanged(e)}
+                  onBlur={(e) => {
+                    e.target.value = e.target.value.trim();
+                    onFormDataChanged(e);
+                  }}
                   value={formData.name || ""}
                 />
               </div>
@@ -149,7 +138,28 @@ const Model = ({ editId, isOpen, setIsOpen, modalRef, setEditId }) => {
                   name="user_name"
                   className="col-span-3"
                   onChange={(e) => onFormDataChanged(e)}
+                  onBlur={(e) => {
+                    e.target.value = e.target.value.trim();
+                    onFormDataChanged(e);
+                  }}
                   value={formData.user_name || ""}
+                />
+              </div>
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="index_num" className="text-right">
+                  Index no
+                  <br /> (optional)
+                </Label>
+                <Input
+                  id="index_num"
+                  name="index_num"
+                  className="col-span-3"
+                  onChange={(e) => onFormDataChanged(e)}
+                  onBlur={(e) => {
+                    e.target.value = e.target.value.trim();
+                    onFormDataChanged(e);
+                  }}
+                  value={formData.index_num || ""}
                 />
               </div>
               <div className="grid grid-cols-4 items-center gap-4">
@@ -161,17 +171,33 @@ const Model = ({ editId, isOpen, setIsOpen, modalRef, setEditId }) => {
                   name="email"
                   className="col-span-3"
                   onChange={(e) => onFormDataChanged(e)}
+                  onBlur={(e) => {
+                    e.target.value = e.target.value.trim();
+                    onFormDataChanged(e);
+                  }}
                   value={formData.email || ""}
                 />
               </div>
-
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="contact_no" className="text-right">
+                  Contact No
+                </Label>
+                <Input
+                  id="contact_no"
+                  name="contact_no"
+                  className="col-span-3"
+                  onChange={(e) => onFormDataChanged(e)}
+                  onBlur={(e) => {
+                    e.target.value = e.target.value.trim();
+                    onFormDataChanged(e);
+                  }}
+                  value={formData?.contact_no || ""}
+                />
+              </div>
               <div className={`grid grid-cols-4 items-center gap-4`}>
                 <Label className="text-right">Faculty</Label>
                 <Select
-                  onValueChange={(e) => {
-                    setFormData((cur) => ({ ...cur, d_id: "" }));
-                    onFormDataChanged(e);
-                  }}
+                  onValueChange={(e) => onFormDataChanged(e)}
                   value={formData.f_id ? "f_id:" + formData.f_id : ""}
                 >
                   <SelectTrigger className="col-span-3">
@@ -185,49 +211,6 @@ const Model = ({ editId, isOpen, setIsOpen, modalRef, setEditId }) => {
                     ))}
                   </SelectContent>
                 </Select>
-              </div>
-              <div
-                className={`${
-                  formData.f_id ? "grid" : "hidden"
-                } grid-cols-4 items-center gap-4`}
-              >
-                <Label className="text-right">Department</Label>
-                <Select
-                  onValueChange={(e) => onFormDataChanged(e)}
-                  value={formData.d_id ? "d_id:" + formData.d_id : ""}
-                >
-                  <SelectTrigger
-                    disabled={!formData.f_id}
-                    className="col-span-3"
-                  >
-                    <SelectValue placeholder="Department" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {departmentData?.map((item) => (
-                      <SelectItem value={`d_id:${item.d_id}`} key={item.d_id}>
-                        {item.d_name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="grid grid-cols-4 gap-4">
-                <Label className="text-right">Status</Label>
-                <div className="items-top flex space-x-2 col-span-3 items-center">
-                  <Checkbox
-                    id="status"
-                    onCheckedChange={(e) => onFormDataChanged(e)}
-                    checked={formData?.status === "true"}
-                  />
-                  <div className="grid gap-1.5 leading-none">
-                    <label
-                      htmlFor="status"
-                      className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
-                    >
-                      Active
-                    </label>
-                  </div>
-                </div>
               </div>
             </div>
 

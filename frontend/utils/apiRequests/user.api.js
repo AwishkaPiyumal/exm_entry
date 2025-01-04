@@ -30,11 +30,9 @@ export const getStudentById = async (user_id) => {
 };
 
 export const getStudentByDegShort = async (short) => {
-  console.log(short);
   const response = await axiosInstance.post("/user/getStudentByDegShort", {
     short,
   });
-  console.log(response.data);
   return response.data;
 };
 
@@ -43,8 +41,18 @@ export const updateManager = async (data) => {
   return response.data;
 };
 
+export const updateManagerStatus = async (data) => {
+  const response = await axiosInstance.put("/user/updateManagerStatus", data);
+  return response.data;
+};
+
 export const updateStudent = async (data) => {
   const response = await axiosInstance.put("/user/updateStudent", data);
+  return response.data;
+};
+
+export const updateStudentStatus = async (data) => {
+  const response = await axiosInstance.put("/user/updateStudentStatus", data);
   return response.data;
 };
 

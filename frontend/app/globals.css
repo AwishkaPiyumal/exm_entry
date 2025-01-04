@@ -95,6 +95,7 @@ body {
 
 ::-webkit-scrollbar {
   width: 10px;
+  height: 12px;
 }
 
 ::-webkit-scrollbar-track {
@@ -111,6 +112,7 @@ body {
 
 ::-moz-scrollbar {
   width: 10px;
+  height: 10px;
 }
 
 ::-moz-scrollbar-track {
@@ -127,6 +129,7 @@ body {
 
 ::-ms-scrollbar {
   width: 10px;
+  height: 10px;
 }
 
 ::-ms-scrollbar-track {

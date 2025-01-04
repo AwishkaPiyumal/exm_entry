@@ -1,5 +1,4 @@
 "use client";
-import { columns } from "./Columns";
 import { DataTable } from "./DataTable";
 import { Input } from "@/components/ui/input";
 import { useEffect, useRef, useState } from "react";
@@ -12,10 +11,26 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Modal from "./Model";
-import { getAllBatches } from "@/utils/apiRequests/batch.api";
+import {
+  getAllBatchDetails,
+  getAllBatches,
+  updateBatchStatus,
+} from "@/utils/apiRequests/batch.api";
 import StudentModel from "./StudentModel";
+import DeadlineModel from "./DeadlineModel";
+import { Button } from "@/components/ui/button";
+import { ArrowUpDown } from "lucide-react";
+import { FaClock, FaPen, FaUserPlus } from "react-icons/fa6";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { Switch } from "@/components/ui/switch";
+import { toast, Toaster } from "sonner";
 
 const BatchesDetails = () => {
   const [filteredData, setFilteredData] = useState([]);
@@ -23,16 +38,192 @@ const BatchesDetails = () => {
   const [status, setStatus] = useState("all");
   const [isOpen, setIsOpen] = useState(false);
   const [isFeedOpen, setIsFeedOpen] = useState(false);
+  const [isDeadlineOpen, setIsDeadlineOpen] = useState(false);
   const modalRef = useRef(null);
   const studentModalRef = useRef(null);
+  const deadlineModalRef = useRef(null);
   const [editId, setEditId] = useState("");
   const [feedId, setFeedId] = useState("");
+  const [deadlineId, setDeadlineId] = useState("");
   const [feedDegShort, setFeedDegShort] = useState("");
+  const queryClient = useQueryClient();
 
   const { data, isLoading, error } = useQuery({
-    queryFn: getAllBatches,
+    queryFn: getAllBatchDetails,
     queryKey: ["batches"],
   });
+
+  const { mutate } = useMutation({
+    mutationFn: updateBatchStatus,
+    onSuccess: (res) => {
+      queryClient.invalidateQueries(["batches"]);
+      setEditId("");
+      toast(res.message);
+    },
+    onError: (err) => {
+      console.log(err);
+      setEditId("");
+      toast("Operation failed");
+    },
+  });
+
+  const onStatusChanged = async (e) => {
+    let id = e.split(":")[0];
+    let status = e.split(":")[1];
+    mutate({ id, status });
+  };
+  const columns = [
+    {
+      accessorKey: "batch_code",
+      header: "Batch code",
+    },
+    {
+      id: "academic_year",
+
+      header: ({ column }) => {
+        return (
+          <Button
+            variant="ghost"
+            onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+          >
+            Academic year
+            <ArrowUpDown className="ml-2 h-4 w-4" />
+          </Button>
+        );
+      },
+      cell: ({ row }) => {
+        let academic_year = row.original.batch_code.slice(0, 4);
+        return <p className="text-center">{academic_year}</p>;
+      },
+    },
+    {
+      accessorKey: "degree_name",
+      header: "Degree programme",
+    },
+    {
+      id: "level",
+
+      header: "Level",
+      cell: ({ row }) => {
+        let level = row.original.batch_code.slice(
+          row.original.batch_code.length - 2,
+          row.original.batch_code.length - 1
+        );
+        return <p className="text-center">{level}</p>;
+      },
+    },
+    {
+      id: "sem",
+
+      header: "Semester",
+      cell: ({ row }) => {
+        let sem = row.original.batch_code.slice(
+          row.original.batch_code.length - 1
+        );
+        return <p className="text-center">{sem}</p>;
+      },
+    },
+    {
+      id: "Entries",
+      header: "Entries",
+      cell: ({ row }) => {
+        return <p className="text-center">{row.original.student_count}</p>;
+      },
+    },
+    {
+      id: "status",
+      header: "Status",
+      cell: ({ row }) => {
+        return (
+          <Switch
+            id={row.original.batch_id}
+            onCheckedChange={(e) =>
+              onStatusChanged(row.original.batch_id + ":" + e)
+            }
+            checked={row.original.batch_status == "true"}
+          />
+        );
+      },
+    },
+    {
+      id: "actions",
+      header: () => {
+        return <p className="text-center">Actions</p>;
+      },
+
+      cell: ({ row }) => {
+        let short = row.original.batch_code.slice(
+          4,
+          row.original.batch_code.length - 2
+        );
+        return (
+          <div className="flex gap-2">
+            {row.original.student_count ? (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger>
+                    <span className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0 border border-input bg-background shadow-sm hover:bg-accent hover:text-accent-foreground h-9 px-4 py-2 cursor-not-allowed">
+                      <FaPen />
+                      &nbsp;Edit
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent className="bg-white text-black shadow-lg p-2">
+                    <p>
+                      student(s) already applied for the exam. so you can't edit
+                      now
+                    </p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            ) : (
+              <Button
+                variant="outline"
+                className="editBtn"
+                id={row.original.batch_id}
+              >
+                <FaPen />
+                &nbsp;Edit
+              </Button>
+            )}
+            <Button
+              variant="outline"
+              className="deadlineBtn"
+              id={row.original.batch_id}
+            >
+              <FaClock />
+              &nbsp;Set Deadlines
+            </Button>
+            {row.original.student_count ? (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger>
+                    <span className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0 bg-primary text-primary-foreground shadow hover:bg-primary/90 h-9 px-4 py-2 cursor-not-allowed">
+                      <FaUserPlus />
+                      &nbsp;Feed students
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent className="bg-white text-black shadow-lg p-2">
+                    <p>
+                      student(s) already applied for the exam. so you can't
+                      add/remove students now
+                    </p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            ) : (
+              <Button
+                className="feedBtn"
+                id={row.original.batch_id + ":" + short}
+              >
+                <FaUserPlus />
+                &nbsp;Feed students
+              </Button>
+            )}
+          </div>
+        );
+      },
+    },
+  ];
 
   const onClearClicked = () => setSearchValue("");
 
@@ -42,6 +233,11 @@ const BatchesDetails = () => {
 
   const onStatusOptionClicked = (e) => {
     setStatus(e);
+  };
+
+  const toggleDeadlineModal = () => {
+    isDeadlineOpen && setDeadlineId("");
+    setIsDeadlineOpen((prev) => !prev);
   };
 
   const toggleModal = () => {
@@ -64,6 +260,11 @@ const BatchesDetails = () => {
       setFeedId(e.target.id.split(":")[0]);
       setFeedDegShort(e.target.id.split(":")[1]);
       toggleFeedModal();
+    }
+
+    if (e.target.classList.contains("deadlineBtn")) {
+      setDeadlineId(e.target.id);
+      toggleDeadlineModal();
     }
   };
 
@@ -122,6 +323,13 @@ const BatchesDetails = () => {
           </div>
         </div>
       </div>
+      <DeadlineModel
+        deadlineId={deadlineId}
+        isDeadlineOpen={isDeadlineOpen}
+        setIsDeadlineOpen={setIsDeadlineOpen}
+        deadlineModalRef={deadlineModalRef}
+        setDeadlineId={setDeadlineId}
+      />
       <Modal
         editId={editId}
         isOpen={isOpen}

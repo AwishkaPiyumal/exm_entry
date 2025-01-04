@@ -12,7 +12,7 @@ import { getManagerById, updateManager } from "@/utils/apiRequests/user.api";
 import { GiCancel } from "react-icons/gi";
 
 const Model = ({ editId, isOpen, setIsOpen, modalRef, setEditId }) => {
-  const [formData, setFormData] = useState({ status: "true" });
+  const [formData, setFormData] = useState({});
   const [btnEnable, setBtnEnable] = useState(false);
   const queryClient = useQueryClient();
 
@@ -44,19 +44,17 @@ const Model = ({ editId, isOpen, setIsOpen, modalRef, setEditId }) => {
     const { name, value } = e.target || {};
     if (e.target) {
       setFormData((prev) => ({ ...prev, [name]: value }));
-    } else if (typeof e === "boolean") {
-      setFormData((prev) => ({ ...prev, status: e.toString() }));
     }
   };
 
   const onFormSubmitted = () => {
     mutate(formData);
-    setFormData({ status: "true" });
+    setFormData({});
     setIsOpen(false);
   };
 
   const onFormReset = () => {
-    setFormData(data || { status: "true" });
+    setFormData(data || {});
   };
 
   useEffect(() => {
@@ -87,7 +85,7 @@ const Model = ({ editId, isOpen, setIsOpen, modalRef, setEditId }) => {
                 className="text-2xl hover:cursor-pointer hover:text-zinc-700"
                 onClick={() => {
                   setIsOpen(false);
-                  setFormData({ status: "true" });
+                  setFormData({});
                   setEditId("");
                 }}
               />
@@ -103,6 +101,10 @@ const Model = ({ editId, isOpen, setIsOpen, modalRef, setEditId }) => {
                   name="name"
                   className="col-span-3"
                   onChange={(e) => onFormDataChanged(e)}
+                  onBlur={(e) => {
+                    e.target.value = e.target.value.trim();
+                    onFormDataChanged(e);
+                  }}
                   value={formData?.name || ""}
                 />
               </div>
@@ -115,6 +117,10 @@ const Model = ({ editId, isOpen, setIsOpen, modalRef, setEditId }) => {
                   name="user_name"
                   className="col-span-3"
                   onChange={(e) => onFormDataChanged(e)}
+                  onBlur={(e) => {
+                    e.target.value = e.target.value.trim();
+                    onFormDataChanged(e);
+                  }}
                   value={formData?.user_name || ""}
                 />
               </div>
@@ -127,6 +133,10 @@ const Model = ({ editId, isOpen, setIsOpen, modalRef, setEditId }) => {
                   name="email"
                   className="col-span-3"
                   onChange={(e) => onFormDataChanged(e)}
+                  onBlur={(e) => {
+                    e.target.value = e.target.value.trim();
+                    onFormDataChanged(e);
+                  }}
                   value={formData?.email || ""}
                 />
               </div>
@@ -139,27 +149,12 @@ const Model = ({ editId, isOpen, setIsOpen, modalRef, setEditId }) => {
                   name="contact_no"
                   className="col-span-3"
                   onChange={(e) => onFormDataChanged(e)}
+                  onBlur={(e) => {
+                    e.target.value = e.target.value.trim();
+                    onFormDataChanged(e);
+                  }}
                   value={formData?.contact_no || ""}
                 />
-              </div>
-
-              <div className="grid grid-cols-4 gap-4">
-                <Label className="text-right">Status</Label>
-                <div className="items-top flex space-x-2 col-span-3 items-center">
-                  <Checkbox
-                    id="status"
-                    onCheckedChange={(e) => onFormDataChanged(e)}
-                    checked={formData?.status === "true"}
-                  />
-                  <div className="grid gap-1.5 leading-none">
-                    <label
-                      htmlFor="status"
-                      className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
-                    >
-                      status
-                    </label>
-                  </div>
-                </div>
               </div>
             </div>
 

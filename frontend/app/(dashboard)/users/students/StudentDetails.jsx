@@ -1,6 +1,5 @@
 "use client";
 
-import { columns } from "./Columns";
 import { Input } from "@/components/ui/input";
 import { useEffect, useRef, useState } from "react";
 import { MdCancel } from "react-icons/md";
@@ -12,10 +11,20 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { useQuery } from "@tanstack/react-query";
-import { getAllStudents } from "@/utils/apiRequests/user.api";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  getAllStudents,
+  updateStudentStatus,
+} from "@/utils/apiRequests/user.api";
 import Modal from "./Model";
 import { DataTable } from "@/components/DataTable";
+import { Button } from "@/components/ui/button";
+import { ArrowUpDown } from "lucide-react";
+import { FaPen } from "react-icons/fa6";
+import { Switch } from "@/components/ui/switch";
+import { toast } from "sonner";
+import { StudentsDataTable } from "@/components/StudentsDataTable";
+import ImportModel from "./ImportModel";
 
 const StudentDetails = () => {
   const [filteredData, setFilteredData] = useState([]);
@@ -23,12 +32,121 @@ const StudentDetails = () => {
   const [status, setStatus] = useState("all");
   const [isOpen, setIsOpen] = useState(false);
   const modalRef = useRef(null);
+  const [isImportOpen, setIsImportOpen] = useState(false);
+  const importModalRef = useRef(null);
   const [editId, setEditId] = useState("");
+  const queryClient = useQueryClient();
 
   const { data, isLoading, error } = useQuery({
     queryFn: getAllStudents,
     queryKey: ["students"],
   });
+
+  const { mutate } = useMutation({
+    mutationFn: updateStudentStatus,
+    onSuccess: (res) => {
+      queryClient.invalidateQueries(["students"]);
+      setEditId("");
+      toast(res.message);
+    },
+    onError: (err) => {
+      console.log(err);
+      setEditId("");
+      toast("Operation failed");
+    },
+  });
+
+  const onStatusChanged = async (e) => {
+    let id = e.split(":")[0];
+    let status = e.split(":")[1];
+    mutate({ id, status });
+  };
+  const columns = [
+    {
+      accessorKey: "user_name",
+      header: ({ column }) => {
+        return (
+          <Button
+            variant="ghost"
+            onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+          >
+            User name
+            <ArrowUpDown className="ml-2 h-4 w-4" />
+          </Button>
+        );
+      },
+    },
+    {
+      accessorKey: "index_num",
+      header: ({ column }) => {
+        return (
+          <Button
+            variant="ghost"
+            onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+          >
+            Index no
+            <ArrowUpDown className="ml-2 h-4 w-4" />
+          </Button>
+        );
+      },
+    },
+    {
+      accessorKey: "name",
+      header: ({ column }) => {
+        return (
+          <Button
+            variant="ghost"
+            onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+          >
+            Name
+            <ArrowUpDown className="ml-2 h-4 w-4" />
+          </Button>
+        );
+      },
+    },
+    {
+      id: "email",
+      header: "Email",
+      cell: ({ row }) => {
+        return <p className="lowercase">{row.original.email}</p>;
+      },
+    },
+    {
+      accessorKey: "contact_no",
+      header: "Contact No",
+    },
+    {
+      accessorKey: "status",
+      header: "Status",
+      cell: ({ row }) => {
+        return (
+          <Switch
+            id={row.original.s_id}
+            onCheckedChange={(e) =>
+              onStatusChanged(row.original.s_id + ":" + e)
+            }
+            checked={row.original.status == "true"}
+          />
+        );
+      },
+    },
+    {
+      id: "actions",
+      header: "Actions",
+      cell: ({ row }) => {
+        return (
+          <Button
+            variant="outline"
+            className="editBtn"
+            id={row.original.user_id}
+          >
+            <FaPen />
+            &nbsp;Edit
+          </Button>
+        );
+      },
+    },
+  ];
 
   const onClearClicked = () => setSearchValue("");
 
@@ -43,6 +161,10 @@ const StudentDetails = () => {
   const toggleModal = () => {
     isOpen && setEditId("");
     setIsOpen((prev) => !prev);
+  };
+
+  const toggleImportModal = () => {
+    setIsImportOpen((prev) => !prev);
   };
 
   const onEditClicked = (e) => {
@@ -115,13 +237,18 @@ const StudentDetails = () => {
         modalRef={modalRef}
         setEditId={setEditId}
       />
+      <ImportModel
+        isImportOpen={isImportOpen}
+        setIsImportOpen={setIsImportOpen}
+        importModalRef={importModalRef}
+      />
       <div className="container mx-auto">
-        <DataTable
+        <StudentsDataTable
           columns={columns}
           data={filteredData}
           onEditClicked={onEditClicked}
           toggleModal={toggleModal}
-          btnText="Create student"
+          toggleImportModal={toggleImportModal}
         />
       </div>
     </>

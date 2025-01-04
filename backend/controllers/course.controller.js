@@ -1,12 +1,13 @@
 import pool from "../config/db.js";
 import errorProvider from "../utils/errorProvider.js";
 import { generatePassword, hashPassword } from "../utils/functions.js";
+import mailer from "../utils/mailer.js";
 
 export const createFaculty = async (req, res, next) => {
   let { f_name, email, contact_no, status } = req.body;
 
   if (!status) {
-    status = "false";
+    status = "true";
   }
 
   if (!f_name || !email || !contact_no) {
@@ -15,39 +16,43 @@ export const createFaculty = async (req, res, next) => {
 
   try {
     const conn = await pool.getConnection();
-
     try {
       await conn.beginTransaction();
 
-      // Check if faculty already exists (based on f_name or email)
-      const [facultyExists] = await conn.execute(
-        "SELECT COUNT(*) AS count FROM faculty f LEFT JOIN user u ON f.user_id = u.user_id WHERE f.f_name = ? OR u.user_name = ?",
+      // Step 1: Check if faculty already exists
+      const [facultyExistsResult] = await conn.query(
+        "CALL CheckIfFacultyExists(?, ?, @exists); SELECT @exists AS faculty_exists;",
         [f_name, email]
       );
+      const { faculty_exists } = facultyExistsResult[0];
 
-      if (facultyExists[0].count > 0) {
+      if (faculty_exists > 0) {
         conn.release();
         return next(errorProvider(409, "Faculty or email already exists"));
       }
 
+      // Step 2: Generate password and hash it
       const password = await generatePassword();
-
-      console.log("Generated password:", password);
       const hashedPassword = await hashPassword(password);
 
-      const [userResult] = await conn.execute(
-        "INSERT INTO user(user_name, password, role_id) VALUES (?,?,?)",
-        [email, hashedPassword, "2"]
+      // Step 3: Create the user record
+      const [userResult] = await conn.query(
+        "CALL CreateFacultyUser(?, ?, @user_id); SELECT @user_id AS user_id;",
+        [email, hashedPassword]
       );
-      const user_id = userResult.insertId;
 
-      // Insert into faculty table
-      const [facultyResult] = await conn.execute(
-        "INSERT INTO faculty (f_name, user_id, contact_no, status) VALUES (?, ?, ?, ?)",
-        [f_name, user_id, contact_no, status]
-      );
+      const user_id = userResult[1][0].user_id;
+
+      // Step 4: Create the faculty record
+      await conn.query("CALL CreateFaculty(?, ?, ?, ?);", [
+        f_name,
+        user_id,
+        contact_no,
+        status,
+      ]);
 
       await conn.commit();
+      await mailer(email, email, password);
 
       return res.status(201).json({ message: "Faculty created successfully" });
     } catch (error) {
@@ -66,7 +71,7 @@ export const createFaculty = async (req, res, next) => {
 };
 
 export const updateFaculty = async (req, res, next) => {
-  const { f_id, f_name, email, contact_no, status } = req.body;
+  const { f_id, f_name, email, contact_no } = req.body;
 
   if (!f_id || !f_name || !email || !contact_no) {
     return next(errorProvider(400, "Missing required fields"));
@@ -74,31 +79,31 @@ export const updateFaculty = async (req, res, next) => {
 
   try {
     const conn = await pool.getConnection();
-
     try {
       await conn.beginTransaction();
 
-      // Check if faculty exists
-      const [facultyExists] = await conn.execute(
-        "SELECT * FROM faculty WHERE f_id = ?",
+      // Step 1: Check if faculty exists
+      const [facultyDetails] = await conn.query(
+        "CALL GetFacultyDetailsByFid(?);",
         [f_id]
       );
 
-      if (!facultyExists.length) {
+      if (!facultyDetails[0].length) {
         conn.release();
         return next(errorProvider(404, "Faculty not found"));
       }
 
-      // Update faculty table
-      await conn.execute(
-        "UPDATE faculty SET f_name = ?, contact_no = ?, status = ? WHERE f_id = ?",
-        [f_name, contact_no, status, f_id]
-      );
+      const user_id = facultyDetails[0][0].user_id;
 
-      await conn.execute("UPDATE user SET user_name = ? WHERE user_id = ?", [
-        email,
-        facultyExists[0].user_id,
+      // Step 2: Update faculty details
+      await conn.query("CALL UpdateFacultyDetails(?, ?, ?);", [
+        f_id,
+        f_name,
+        contact_no,
       ]);
+
+      // Step 3: Update user details
+      await conn.query("CALL UpdateUserDetails(?, ?);", [user_id, email]);
 
       await conn.commit();
 
@@ -118,15 +123,59 @@ export const updateFaculty = async (req, res, next) => {
   }
 };
 
-export const createDepartment = async (req, res, next) => {
-  const { d_name, email, contact_no, status, f_id } = req.body;
+export const updateFacultyStatus = async (req, res, next) => {
+  const { id: f_id, status } = req.body;
 
-  if (!d_name || !email || !contact_no || !f_id) {
+  if (!f_id || !status) {
     return next(errorProvider(400, "Missing required fields"));
   }
 
-  if (!status) {
-    status = "false";
+  try {
+    const conn = await pool.getConnection();
+    try {
+      await conn.beginTransaction();
+
+      // Step 1: Check if faculty exists
+      const [facultyDetails] = await conn.query(
+        "CALL GetFacultyDetailsByFid(?);",
+        [f_id]
+      );
+
+      if (!facultyDetails[0].length) {
+        conn.release();
+        return next(errorProvider(404, "Faculty not found"));
+      }
+
+      const user_id = facultyDetails[0][0].user_id;
+
+      // Step 2: Update faculty details
+      await conn.query("CALL updateFacultyStatus(?, ?);", [f_id, status]);
+
+      await conn.commit();
+
+      return res
+        .status(200)
+        .json({ message: "Faculty status updated successfully" });
+    } catch (error) {
+      await conn.rollback();
+      console.error("Error while updating faculty:", error);
+      return next(
+        errorProvider(500, "An error occurred while updating faculty")
+      );
+    } finally {
+      conn.release();
+    }
+  } catch (error) {
+    console.error("Database connection error:", error);
+    return next(errorProvider(500, "Failed to establish database connection"));
+  }
+};
+
+export const createDepartment = async (req, res, next) => {
+  const { d_name, email, contact_no, status = "true", f_id } = req.body;
+
+  if (!d_name || !email || !contact_no || !f_id) {
+    return next(errorProvider(400, "Missing required fields"));
   }
 
   try {
@@ -135,45 +184,45 @@ export const createDepartment = async (req, res, next) => {
     try {
       await conn.beginTransaction();
 
-      // Check if department already exists
-      const [departmentExists] = await conn.execute(
-        "SELECT COUNT(*) AS count FROM department d LEFT JOIN user u ON d.user_id = u.user_id WHERE d.d_name = ? OR u.user_name = ?",
+      // Step 1: Check if the department already exists
+      const [departmentExistsResult] = await conn.query(
+        "CALL CheckIfDepartmentExists(?, ?, @exists); SELECT @exists AS departmentExists;",
         [d_name, email]
       );
+      const { departmentExists } = departmentExistsResult[1][0];
 
-      if (departmentExists[0].count > 0) {
+      if (departmentExists > 0) {
         conn.release();
         return next(errorProvider(409, "Department already exists"));
       }
 
+      // Step 2: Generate a password and hash it
       const password = await generatePassword();
-
-      console.log("Generated password:", password);
       const hashedPassword = await hashPassword(password);
 
-      const [userResult] = await conn.execute(
-        "INSERT INTO user(user_name, password, role_id) VALUES (?,?,?)",
-        [email, hashedPassword, "3"]
+      // Step 3: Create a user for the department
+      const [userResult] = await conn.query(
+        "CALL CreateDepartmentUser(?, ?, @user_id); SELECT @user_id AS user_id;",
+        [email, hashedPassword]
       );
+      const user_id = userResult[1][0].user_id;
 
-      const user_id = userResult.insertId;
-
-      // Insert into department table
-      const [departmentResult] = await conn.execute(
-        "INSERT INTO department (d_name, user_id, contact_no, status) VALUES (?, ?, ?, ?)",
+      // Step 4: Create the department
+      const [departmentResult] = await conn.query(
+        "CALL CreateDepartment(?, ?, ?, ?, @d_id); SELECT @d_id AS d_id;",
         [d_name, user_id, contact_no, status]
       );
-      const d_id = departmentResult.insertId;
+      const d_id = departmentResult[1][0].d_id;
 
-      // Insert into fac_dep table
-      await conn.execute("INSERT INTO fac_dep (f_id, d_id) VALUES (?, ?)", [
-        f_id,
-        d_id,
-      ]);
+      // Step 5: Link the department to the faculty
+      await conn.query("CALL LinkFacultyDepartment(?, ?);", [f_id, d_id]);
 
       await conn.commit();
 
-      res.status(201).json({
+      // Send email notification to the department user
+      await mailer(email, email, password);
+
+      return res.status(201).json({
         message: "Department created successfully",
       });
     } catch (error) {
@@ -192,7 +241,7 @@ export const createDepartment = async (req, res, next) => {
 };
 
 export const updateDepartment = async (req, res, next) => {
-  const { d_id, d_name, email, contact_no, status, f_id } = req.body;
+  const { d_id, d_name, email, contact_no, f_id } = req.body;
 
   if (!d_id || !d_name || !email || !contact_no || !f_id) {
     return next(errorProvider(400, "Missing required fields"));
@@ -204,32 +253,31 @@ export const updateDepartment = async (req, res, next) => {
     try {
       await conn.beginTransaction();
 
-      const [departmentExists] = await conn.execute(
-        "SELECT * FROM department WHERE d_id = ?",
+      // Step 1: Check if department exists
+      const [departmentDetails] = await conn.query(
+        "CALL GetDepartmentDetailsByDid(?);",
         [d_id]
       );
 
-      if (!departmentExists.length) {
+      if (!departmentDetails[0].length) {
         conn.release();
         return next(errorProvider(404, "Department not found"));
       }
 
-      // Update department table
-      await conn.execute(
-        "UPDATE department SET d_name = ?, contact_no = ?, status = ? WHERE d_id = ?",
-        [d_name, contact_no, status, d_id]
-      );
+      const user_id = departmentDetails[0][0].user_id;
 
-      await conn.execute("UPDATE user SET user_name = ? WHERE user_id = ?", [
-        email,
-        departmentExists[0].user_id,
-      ]);
-
-      // // Update fac_dep table
-      await conn.execute("UPDATE fac_dep SET f_id = ? WHERE d_id = ?", [
-        f_id,
+      // Step 2: Update department details
+      await conn.query("CALL UpdateDepartmentDetails(?, ?, ?);", [
         d_id,
+        d_name,
+        contact_no,
       ]);
+
+      // Step 3: Update user details
+      await conn.query("CALL UpdateDepartmentUser(?, ?);", [user_id, email]);
+
+      // Step 4: Update faculty-department link
+      await conn.query("CALL UpdateFacultyDepartmentLink(?, ?);", [f_id, d_id]);
 
       await conn.commit();
 
@@ -251,22 +299,11 @@ export const updateDepartment = async (req, res, next) => {
   }
 };
 
-export const createDegree = async (req, res, next) => {
-  const {
-    deg_name,
-    short,
-    levels: levelsArr,
-    no_of_sem_per_year,
-    status,
-    d_id,
-  } = req.body;
-  const levels = levelsArr.sort((a, b) => a - b).join(":");
+export const updateDepartmentStatus = async (req, res, next) => {
+  const { id: d_id, status } = req.body;
 
-  if (!deg_name || !short || !levels || !no_of_sem_per_year || !d_id) {
+  if (!d_id || !status) {
     return next(errorProvider(400, "Missing required fields"));
-  }
-  if (!status) {
-    status = "false";
   }
 
   try {
@@ -275,29 +312,85 @@ export const createDegree = async (req, res, next) => {
     try {
       await conn.beginTransaction();
 
-      // Check if degree already exists
-      const [degreeExists] = await conn.execute(
-        "SELECT COUNT(*) AS count FROM degree WHERE deg_name = ? OR short = ?",
-        [deg_name, short]
+      // Step 1: Check if department exists
+      const [departmentDetails] = await conn.query(
+        "CALL GetDepartmentDetailsByDid(?);",
+        [d_id]
       );
 
-      if (degreeExists[0].count > 0) {
+      if (!departmentDetails[0].length) {
+        conn.release();
+        return next(errorProvider(404, "Department not found"));
+      }
+
+      const user_id = departmentDetails[0][0].user_id;
+
+      // Step 2: Update department details
+      await conn.query("CALL updateDepartmentStatus(?, ?);", [d_id, status]);
+
+      await conn.commit();
+
+      return res
+        .status(200)
+        .json({ message: "Department status updated successfully" });
+    } catch (error) {
+      await conn.rollback();
+      console.error("Error while updating department:", error);
+      return next(
+        errorProvider(500, "An error occurred while updating department")
+      );
+    } finally {
+      conn.release();
+    }
+  } catch (error) {
+    console.error("Database connection error:", error);
+    return next(errorProvider(500, "Failed to establish database connection"));
+  }
+};
+
+export const createDegree = async (req, res, next) => {
+  const {
+    deg_name,
+    short,
+    levels: levelsArr,
+    no_of_sem_per_year,
+    status = "true",
+    d_id,
+  } = req.body;
+
+  const levels = levelsArr.sort((a, b) => a - b).join(":");
+
+  if (!deg_name || !short || !levels || !no_of_sem_per_year || !d_id) {
+    return next(errorProvider(400, "Missing required fields"));
+  }
+
+  try {
+    const conn = await pool.getConnection();
+
+    try {
+      await conn.beginTransaction();
+
+      // Step 1: Check if degree already exists
+      const [degreeExistsResult] = await conn.query(
+        "CALL CheckIfDegreeExists(?, ?, @exists); SELECT @exists AS degree_exists;",
+        [deg_name, short]
+      );
+      const { degree_exists } = degreeExistsResult[1][0];
+
+      if (degree_exists > 0) {
         conn.release();
         return next(errorProvider(409, "Degree already exists"));
       }
 
-      // Insert into degree table
-      const [degreeResult] = await conn.execute(
-        "INSERT INTO degree (deg_name, short, levels,no_of_sem_per_year, status) VALUES (?, ?,?, ?, ?)",
+      // Step 2: Create the degree
+      const [degreeResult] = await conn.query(
+        "CALL CreateDegree(?, ?, ?, ?, ?, @deg_id); SELECT @deg_id AS deg_id;",
         [deg_name, short, levels, no_of_sem_per_year, status]
       );
-      const deg_id = degreeResult.insertId;
+      const deg_id = degreeResult[1][0].deg_id;
 
-      // Insert into dep_deg table
-      await conn.execute("INSERT INTO dep_deg (d_id, deg_id) VALUES (?, ?)", [
-        d_id,
-        deg_id,
-      ]);
+      // Step 3: Link the degree with the department
+      await conn.query("CALL LinkDegreeWithDepartment(?, ?);", [d_id, deg_id]);
 
       await conn.commit();
 
@@ -321,19 +414,25 @@ export const createDegree = async (req, res, next) => {
 };
 
 export const updateDegree = async (req, res, next) => {
-  const { deg_id } = req.body;
-
   const {
+    deg_id,
     deg_name,
     short,
     levels: levelsArr,
     no_of_sem_per_year,
-    status,
     d_id,
   } = req.body;
+
   const levels = levelsArr.join(":");
 
-  if (!deg_name || !short || !levels || !no_of_sem_per_year || !d_id) {
+  if (
+    !deg_id ||
+    !deg_name ||
+    !short ||
+    !levels ||
+    !no_of_sem_per_year ||
+    !d_id
+  ) {
     return next(errorProvider(400, "Missing required fields"));
   }
 
@@ -343,32 +442,93 @@ export const updateDegree = async (req, res, next) => {
     try {
       await conn.beginTransaction();
 
-      // Check if degree exists
-      const [degreeExists] = await conn.execute(
-        "SELECT COUNT(*) AS count FROM degree WHERE deg_id = ?",
+      // Step 1: Check if degree exists
+      const [degreeExistsResult] = await conn.query(
+        "CALL GetDegreeDetailsByDegid(?, @exists); SELECT @exists AS degree_exists;",
         [deg_id]
       );
+      const { degree_exists } = degreeExistsResult[1][0];
 
-      if (degreeExists[0].count === 0) {
+      if (degree_exists === 0) {
         conn.release();
         return next(errorProvider(404, "Degree not found"));
       }
 
-      // Update degree table
-      await conn.execute(
-        "UPDATE degree SET deg_name = ?, short = ?, levels = ?, no_of_sem_per_year = ?, status = ? WHERE deg_id = ?",
-        [deg_name, short, levels, no_of_sem_per_year, status, deg_id]
+      // Step 2: Check for duplicate degree name or short
+      const [duplicateDegreeResult] = await conn.query(
+        "CALL CheckForDuplicateDegree(?, ?, ?, @exists); SELECT @exists AS duplicate;",
+        [deg_name, short, deg_id]
       );
+      const { duplicate } = duplicateDegreeResult[1][0];
 
-      // Update dep_deg table
-      await conn.execute("UPDATE dep_deg SET d_id = ? WHERE deg_id = ?", [
-        d_id,
+      if (duplicate > 0) {
+        conn.release();
+        return next(errorProvider(409, "Degree already exists"));
+      }
+
+      // Step 3: Update degree details
+      await conn.query("CALL UpdateDegreeDetails(?, ?, ?, ?, ?);", [
         deg_id,
+        deg_name,
+        short,
+        levels,
+        no_of_sem_per_year,
       ]);
+
+      // Step 4: Update department-degree link
+      await conn.query("CALL UpdateDepDeg(?, ?);", [d_id, deg_id]);
 
       await conn.commit();
 
       return res.status(200).json({ message: "Degree updated successfully" });
+    } catch (error) {
+      await conn.rollback();
+      console.error("Error while updating degree:", error);
+      return next(
+        errorProvider(500, "An error occurred while updating the degree")
+      );
+    } finally {
+      conn.release();
+    }
+  } catch (error) {
+    console.error("Database connection error:", error);
+    return next(errorProvider(500, "Failed to establish database connection"));
+  }
+};
+
+export const updateDegreeStatus = async (req, res, next) => {
+  const { id: deg_id, status } = req.body;
+
+  if (!deg_id || !status) {
+    return next(errorProvider(400, "Missing required fields"));
+  }
+
+  try {
+    const conn = await pool.getConnection();
+
+    try {
+      await conn.beginTransaction();
+
+      // Step 1: Check if degree exists
+      const [degreeExistsResult] = await conn.query(
+        "CALL GetDegreeDetailsByDegid(?, @exists); SELECT @exists AS degree_exists;",
+        [deg_id]
+      );
+      const { degree_exists } = degreeExistsResult[1][0];
+
+      if (degree_exists === 0) {
+        conn.release();
+        return next(errorProvider(404, "Degree not found"));
+      }
+
+      // Step 3: Update degree details
+      await conn.query("CALL updateDegreeStatus(?, ?);", [deg_id, status]);
+
+      await conn.commit();
+
+      return res
+        .status(200)
+        .json({ message: "Degree status updated successfully" });
     } catch (error) {
       await conn.rollback();
       console.error("Error while updating degree:", error);
@@ -389,11 +549,8 @@ export const getAllFaculties = async (req, res, next) => {
     const conn = await pool.getConnection();
 
     try {
-      const query = `SELECT * FROM faculty where status = 'true'`;
-
-      const [results] = await conn.execute(query);
-
-      return res.status(200).json(results);
+      const [results] = await conn.query("CALL GetAllFaculties();");
+      return res.status(200).json(results[0]); // First result set contains data
     } catch (error) {
       console.error("Error fetching all faculties:", error);
       return next(errorProvider(500, "Failed to fetch all faculties"));
@@ -411,15 +568,11 @@ export const getAllFacultiesWithExtraDetails = async (req, res, next) => {
     const conn = await pool.getConnection();
 
     try {
-      const query = `SELECT  f.*,u.user_name AS email, COUNT(DISTINCT fd.d_id) AS department_count, COUNT(DISTINCT dd.deg_id) AS degree_count FROM faculty f LEFT JOIN user u ON f.user_id = u.user_id LEFT JOIN fac_dep fd ON f.f_id = fd.f_id LEFT JOIN 
-    dep_deg dd ON fd.d_id = dd.d_id  GROUP BY f.f_id`;
-
-      const [results] = await conn.execute(query);
-
-      return res.status(200).json(results);
+      const [results] = await conn.query("CALL GetAllFacultiesWithDetails();");
+      return res.status(200).json(results[0]); // First result set contains data
     } catch (error) {
-      console.error("Error fetching all faculties:", error);
-      return next(errorProvider(500, "Failed to fetch all faculties"));
+      console.error("Error fetching faculties with details:", error);
+      return next(errorProvider(500, "Failed to fetch faculties with details"));
     } finally {
       conn.release();
     }
@@ -440,15 +593,13 @@ export const getFacultyById = async (req, res, next) => {
     const conn = await pool.getConnection();
 
     try {
-      const query = `SELECT f.*, u.user_name AS email FROM faculty f LEFT JOIN user u ON u.user_id = f.user_id WHERE f.f_id = ?`;
+      const [results] = await conn.query("CALL GetFacultyById(?);", [f_id]);
 
-      const [results] = await conn.execute(query, [f_id]);
-
-      if (results.length === 0) {
+      if (results[0].length === 0) {
         return next(errorProvider(404, `No faculty found for f_id: ${f_id}`));
       }
 
-      return res.status(200).json(results[0]);
+      return res.status(200).json(results[0][0]); // First result set, first record
     } catch (error) {
       console.error("Error fetching faculty by ID:", error);
       return next(errorProvider(500, "Failed to fetch faculty by ID"));
@@ -466,16 +617,13 @@ export const getAllDepartments = async (req, res, next) => {
     const conn = await pool.getConnection();
 
     try {
-      const query = `
-        SELECT * FROM department where status = 'true'`;
+      const [results] = await conn.query("CALL GetAllDepartments();");
 
-      const [results] = await conn.execute(query);
-
-      if (results.length === 0) {
+      if (results[0].length === 0) {
         return next(errorProvider(404, "No departments found."));
       }
 
-      return res.status(200).json({ departments: results });
+      return res.status(200).json({ departments: results[0] }); // First result set contains data
     } catch (error) {
       console.error("Error fetching all departments:", error);
       return next(errorProvider(500, "Failed to fetch all departments"));
@@ -493,14 +641,16 @@ export const getAllDepartmentsWithExtraDetails = async (req, res, next) => {
     const conn = await pool.getConnection();
 
     try {
-      const query = `SELECT  d.*,u.user_name AS email, f.f_name AS faculty_name, COUNT(DISTINCT dd.deg_id) AS degree_count FROM department d LEFT JOIN user u ON d.user_id = u.user_id LEFT JOIN fac_dep fd ON d.d_id = fd.d_id LEFT JOIN faculty f ON fd.f_id = f.f_id LEFT JOIN dep_deg dd ON d.d_id = dd.d_id GROUP BY d.d_id, d.d_name, f.f_name`;
+      const [results] = await conn.query(
+        "CALL GetAllDepartmentsWithDetails();"
+      );
 
-      const [results] = await conn.execute(query);
-
-      return res.status(200).json(results);
+      return res.status(200).json(results[0]); // First result set contains data
     } catch (error) {
-      console.error("Error fetching all faculties:", error);
-      return next(errorProvider(500, "Failed to fetch all faculties"));
+      console.error("Error fetching all departments with details:", error);
+      return next(
+        errorProvider(500, "Failed to fetch all departments with details")
+      );
     } finally {
       conn.release();
     }
@@ -521,18 +671,15 @@ export const getDepartmentById = async (req, res, next) => {
     const conn = await pool.getConnection();
 
     try {
-      const query = `
-        SELECT d.*,fd.f_id, u.user_name AS email FROM department d INNER JOIN fac_dep fd ON d.d_id = fd.d_id LEFT JOIN user u ON u.user_id = d.user_id WHERE d.d_id = ?`;
+      const [results] = await conn.query("CALL GetDepartmentById(?);", [d_id]);
 
-      const [results] = await conn.execute(query, [d_id]);
-
-      if (results.length === 0) {
+      if (results[0].length === 0) {
         return next(
           errorProvider(404, `No department found for d_id: ${d_id}`)
         );
       }
 
-      return res.status(200).json(results[0]);
+      return res.status(200).json(results[0][0]); // First result set, first record
     } catch (error) {
       console.error("Error fetching department by ID:", error);
       return next(errorProvider(500, "Failed to fetch department by ID"));
@@ -550,16 +697,13 @@ export const getAllDegrees = async (req, res, next) => {
     const conn = await pool.getConnection();
 
     try {
-      const query = `
-        SELECT * FROM degree where status = 'true'`;
+      const [results] = await conn.query("CALL GetAllDegrees();");
 
-      const [results] = await conn.execute(query);
-
-      if (results.length === 0) {
+      if (results[0].length === 0) {
         return next(errorProvider(404, "No degrees found."));
       }
 
-      return res.status(200).json(results);
+      return res.status(200).json(results[0]); // First result set contains data
     } catch (error) {
       console.error("Error fetching all degrees:", error);
       return next(errorProvider(500, "Failed to fetch all degrees"));
@@ -577,16 +721,12 @@ export const getAllDegreesWithExtraDetails = async (req, res, next) => {
     const conn = await pool.getConnection();
 
     try {
-      const query = `SELECT dg.deg_id,dg.deg_name,dg.short,dg.levels,dg.no_of_sem_per_year,dg.status,d.d_id,d.d_name AS department_name,f.f_id,
-    f.f_name AS faculty_name FROM degree dg LEFT JOIN dep_deg dd ON dg.deg_id = dd.deg_id LEFT JOIN department d ON dd.d_id = d.d_id LEFT JOIN fac_dep fd ON d.d_id = fd.d_id LEFT JOIN 
-    faculty f ON fd.f_id = f.f_id`;
+      const [results] = await conn.query("CALL GetAllDegreesWithDetails();");
 
-      const [results] = await conn.execute(query);
-
-      return res.status(200).json(results);
+      return res.status(200).json(results[0]); // First result set contains data
     } catch (error) {
-      console.error("Error fetching all faculties:", error);
-      return next(errorProvider(500, "Failed to fetch all faculties"));
+      console.error("Error fetching degrees with details:", error);
+      return next(errorProvider(500, "Failed to fetch degrees with details"));
     } finally {
       conn.release();
     }
@@ -607,10 +747,9 @@ export const getDegreeById = async (req, res, next) => {
     const conn = await pool.getConnection();
 
     try {
-      const query = `SELECT dg.*,d.d_id,f.f_id FROM degree dg LEFT JOIN dep_deg dd ON dg.deg_id = dd.deg_id LEFT JOIN department d ON dd.d_id = d.d_id LEFT JOIN fac_dep fd ON d.d_id = fd.d_id LEFT JOIN faculty f ON fd.f_id = f.f_id where dg.deg_id = ?`;
-      const [results] = await conn.execute(query, [deg_id]);
+      const [results] = await conn.query("CALL GetDegreeById(?);", [deg_id]);
 
-      if (results.length === 0) {
+      if (results[0].length === 0) {
         return next(
           errorProvider(404, `No degree found for deg_id: ${deg_id}`)
         );
@@ -618,10 +757,42 @@ export const getDegreeById = async (req, res, next) => {
 
       return res
         .status(200)
-        .json({ ...results[0], levels: results[0].levels.split(":") });
+        .json({ ...results[0][0], levels: results[0][0].levels.split(":") }); // First result set, first record
     } catch (error) {
       console.error("Error fetching degree by ID:", error);
       return next(errorProvider(500, "Failed to fetch degree by ID"));
+    } finally {
+      conn.release();
+    }
+  } catch (error) {
+    console.error("Error establishing database connection:", error);
+    return next(errorProvider(500, "Failed to establish database connection"));
+  }
+};
+
+export const getDegreeByShort = async (req, res, next) => {
+  const { short } = req.body;
+
+  if (!short) {
+    return next(errorProvider(400, "Missing short."));
+  }
+
+  try {
+    const conn = await pool.getConnection();
+
+    try {
+      const [results] = await conn.query("CALL GetDegreeByShort(?);", [short]);
+
+      if (results[0].length === 0) {
+        return next(
+          errorProvider(404, `No degree found for degree short: ${short}`)
+        );
+      }
+
+      return res.status(200).json(results[0][0]); // First result set, first record
+    } catch (error) {
+      console.error("Error fetching degree by short:", error);
+      return next(errorProvider(500, "Failed to fetch degree by short"));
     } finally {
       conn.release();
     }
@@ -642,16 +813,17 @@ export const getDepartmentsByFacultyId = async (req, res, next) => {
     const conn = await pool.getConnection();
 
     try {
-      const query = `SELECT department.* FROM department INNER JOIN fac_dep ON department.d_id = fac_dep.d_id WHERE fac_dep.f_id = ? AND department.status = 'true'`;
+      const [results] = await conn.query("CALL GetDepartmentsByFacultyId(?);", [
+        f_id,
+      ]);
 
-      const [results] = await conn.execute(query, [f_id]);
-
-      if (results.length === 0) {
+      if (results[0].length === 0) {
         return next(
           errorProvider(404, `No departments found for f_id: ${f_id}`)
         );
       }
-      return res.status(200).json(results);
+
+      return res.status(200).json(results[0]); // First result set contains data
     } catch (error) {
       console.error("Error fetching departments by f_id:", error);
       return next(errorProvider(500, "Failed to fetch departments by f_id"));
@@ -675,17 +847,15 @@ export const getDegreesByDepartmentId = async (req, res, next) => {
     const conn = await pool.getConnection();
 
     try {
-      const query = `
-        SELECT * FROM degree INNER JOIN dep_deg ON degree.deg_id = dep_deg.deg_id
-        WHERE dep_deg.d_id = ? AND degree.status = 'true'`;
+      const [results] = await conn.query("CALL GetDegreesByDepartmentId(?);", [
+        d_id,
+      ]);
 
-      const [results] = await conn.execute(query, [d_id]);
-
-      if (results.length === 0) {
+      if (results[0].length === 0) {
         return next(errorProvider(404, `No degrees found for d_id: ${d_id}`));
       }
 
-      return res.status(200).json(results);
+      return res.status(200).json(results[0]); // First result set contains data
     } catch (error) {
       console.error("Error fetching degrees by d_id:", error);
       return next(errorProvider(500, "Failed to fetch degrees by d_id"));
@@ -701,20 +871,19 @@ export const getDegreesByDepartmentId = async (req, res, next) => {
 export const getNoOfFaculty = async (req, res, next) => {
   try {
     const conn = await pool.getConnection();
+
     try {
-      const [result] = await conn.execute(
-        "SELECT COUNT(*) AS faculty_count FROM faculty"
+      const [results] = await conn.query(
+        "CALL GetFacultyCount(@faculty_count); SELECT @faculty_count AS count;"
       );
 
-      const { faculty_count } = result[0];
+      const { count } = results[1][0];
 
-      return res.status(200).json({
-        count: faculty_count,
-      });
+      return res.status(200).json({ count });
     } catch (error) {
       console.error("Error retrieving number of faculty:", error);
       return next(
-        errorProvider(500, "An error occurred while the faculty count")
+        errorProvider(500, "An error occurred while retrieving faculty count")
       );
     } finally {
       conn.release();
@@ -728,20 +897,22 @@ export const getNoOfFaculty = async (req, res, next) => {
 export const getNoOfDepartments = async (req, res, next) => {
   try {
     const conn = await pool.getConnection();
+
     try {
-      const [result] = await conn.execute(
-        "SELECT COUNT(*) AS department_count FROM department"
+      const [results] = await conn.query(
+        "CALL GetDepartmentCount(@department_count); SELECT @department_count AS count;"
       );
 
-      const { department_count } = result[0];
+      const { count } = results[1][0];
 
-      return res.status(200).json({
-        count: department_count,
-      });
+      return res.status(200).json({ count });
     } catch (error) {
       console.error("Error retrieving number of departments:", error);
       return next(
-        errorProvider(500, "An error occurred while the department count")
+        errorProvider(
+          500,
+          "An error occurred while retrieving department count"
+        )
       );
     } finally {
       conn.release();
@@ -755,20 +926,19 @@ export const getNoOfDepartments = async (req, res, next) => {
 export const getNoOfDegrees = async (req, res, next) => {
   try {
     const conn = await pool.getConnection();
+
     try {
-      const [result] = await conn.execute(
-        "SELECT COUNT(*) AS degree_count FROM degree"
+      const [results] = await conn.query(
+        "CALL GetDegreeCount(@degree_count); SELECT @degree_count AS count;"
       );
 
-      const { degree_count } = result[0];
+      const { count } = results[1][0];
 
-      return res.status(200).json({
-        count: degree_count,
-      });
+      return res.status(200).json({ count });
     } catch (error) {
       console.error("Error retrieving number of degrees:", error);
       return next(
-        errorProvider(500, "An error occurred while the degree count")
+        errorProvider(500, "An error occurred while retrieving degree count")
       );
     } finally {
       conn.release();
@@ -780,29 +950,34 @@ export const getNoOfDegrees = async (req, res, next) => {
 };
 
 export const getNoOfDepartmentsByFaculty = async (req, res, next) => {
+  const { f_id } = req.params;
+
+  if (!f_id) {
+    return res.status(400).json({ message: "Faculty ID is required" });
+  }
+
   try {
-    const { f_id } = req.params;
-
-    if (!f_id) {
-      return res.status(400).json({ message: "Faculty ID is required" });
-    }
-
     const conn = await pool.getConnection();
+
     try {
-      const [result] = await conn.execute(
-        "SELECT COUNT(DISTINCT d_id) AS department_count FROM fac_dep WHERE f_id = ?",
+      const [results] = await conn.query(
+        "CALL GetDepartmentCountByFaculty(?, @department_count); SELECT @department_count AS count;",
         [f_id]
       );
 
-      const { department_count } = result[0];
+      const { count } = results[1][0];
 
-      return res.status(200).json({
-        count: department_count,
-      });
+      return res.status(200).json({ count });
     } catch (error) {
-      console.error("Error retrieving number of departments:", error);
+      console.error(
+        "Error retrieving number of departments by faculty:",
+        error
+      );
       return next(
-        errorProvider(500, "An error occurred while  the department count")
+        errorProvider(
+          500,
+          "An error occurred while retrieving department count"
+        )
       );
     } finally {
       conn.release();
@@ -812,32 +987,32 @@ export const getNoOfDepartmentsByFaculty = async (req, res, next) => {
     return next(errorProvider(500, "Failed to establish database connection"));
   }
 };
+
 export const getNoOfDegreesByDepartment = async (req, res, next) => {
+  const { d_id } = req.params;
+
+  if (!d_id) {
+    return res
+      .status(400)
+      .json({ message: "Department ID (d_id) is required" });
+  }
+
   try {
-    const { d_id } = req.params;
-
-    if (!d_id) {
-      return res
-        .status(400)
-        .json({ message: "Department ID (d_id) is required" });
-    }
-
     const conn = await pool.getConnection();
+
     try {
-      const [result] = await conn.execute(
-        "SELECT COUNT(DISTINCT deg_id) AS degree_count FROM dep_deg WHERE d_id = ?",
+      const [results] = await conn.query(
+        "CALL GetDegreeCountByDepartment(?, @degree_count); SELECT @degree_count AS count;",
         [d_id]
       );
 
-      const { degree_count } = result[0];
+      const { count } = results[1][0];
 
-      return res.status(200).json({
-        count: degree_count,
-      });
+      return res.status(200).json({ count });
     } catch (error) {
-      console.error("Error retrieving number of degrees:", error);
+      console.error("Error retrieving number of degrees by department:", error);
       return next(
-        errorProvider(500, "An error occurred while  the degree count")
+        errorProvider(500, "An error occurred while retrieving degree count")
       );
     } finally {
       conn.release();
@@ -847,30 +1022,30 @@ export const getNoOfDegreesByDepartment = async (req, res, next) => {
     return next(errorProvider(500, "Failed to establish database connection"));
   }
 };
+
 export const getNoOfDegreesByLevel = async (req, res, next) => {
+  const { levels } = req.params;
+
+  if (!levels) {
+    return res.status(400).json({ message: "Levels is required" });
+  }
+
   try {
-    const { levels } = req.params;
-
-    if (!levels) {
-      return res.status(400).json({ message: "Levels is required" });
-    }
-
     const conn = await pool.getConnection();
+
     try {
-      const [result] = await conn.execute(
-        "SELECT COUNT(*) AS degree_count FROM degree WHERE levels = ?",
+      const [results] = await conn.query(
+        "CALL GetDegreeCountByLevel(?, @degree_count); SELECT @degree_count AS count;",
         [levels]
       );
 
-      const { degree_count } = result[0];
+      const { count } = results[1][0];
 
-      return res.status(200).json({
-        count: degree_count,
-      });
+      return res.status(200).json({ count });
     } catch (error) {
       console.error("Error retrieving degree count by levels:", error);
       return next(
-        errorProvider(500, "An error occurred while the degree count")
+        errorProvider(500, "An error occurred while retrieving degree count")
       );
     } finally {
       conn.release();
@@ -890,11 +1065,11 @@ export const getActiveFacultiesWithDepartmentsCount = async (
     const conn = await pool.getConnection();
 
     try {
-      const query = `SELECT f.f_id,f.f_name,COUNT(fd.d_id) AS departments_count FROM faculty f LEFT JOIN fac_dep fd ON f.f_id = fd.f_id where f.status = 'true' GROUP BY fd.f_id`;
+      const [results] = await conn.query(
+        "CALL GetActiveFacultiesWithDepartmentsCount();"
+      );
 
-      const [results] = await conn.execute(query);
-
-      return res.status(200).json(results);
+      return res.status(200).json(results[0]); // First result set contains data
     } catch (error) {
       console.error(
         "Error fetching active faculties with departments count:",
@@ -903,7 +1078,7 @@ export const getActiveFacultiesWithDepartmentsCount = async (
       return next(
         errorProvider(
           500,
-          "Failed to fetching active faculties with departments count"
+          "Failed to fetch active faculties with departments count"
         )
       );
     } finally {
@@ -922,24 +1097,29 @@ export const getActiveDepartmentsInAFacultyWithDegreesCount = async (
 ) => {
   const { f_id } = req.body;
 
+  if (!f_id) {
+    return next(errorProvider(400, "Missing f_id."));
+  }
+
   try {
     const conn = await pool.getConnection();
 
     try {
-      const query = `SELECT d.d_id,d.d_name,COUNT(dd.deg_id) AS degrees_count FROM department d LEFT JOIN dep_deg dd ON d.d_id = dd.d_id LEFT JOIN fac_dep fd ON d.d_id = fd.d_id where fd.f_id = ? AND d.status = 'true' GROUP BY dd.d_id`;
+      const [results] = await conn.query(
+        "CALL GetActiveDepartmentsWithDegreesCount(?);",
+        [f_id]
+      );
 
-      const [results] = await conn.execute(query, [f_id]);
-
-      return res.status(200).json(results);
+      return res.status(200).json(results[0]); // First result set contains data
     } catch (error) {
       console.error(
-        "Error fetching active departments with degrees count:",
+        "Error fetching active departments in a faculty with degrees count:",
         error
       );
       return next(
         errorProvider(
           500,
-          "Failed to fetching active departments with degrees count"
+          "Failed to fetch active departments in a faculty with degrees count"
         )
       );
     } finally {
@@ -958,19 +1138,30 @@ export const getActiveDegreesInADepartmentWithLevelsCount = async (
 ) => {
   const { d_id } = req.body;
 
+  if (!d_id) {
+    return next(errorProvider(400, "Missing d_id."));
+  }
+
   try {
     const conn = await pool.getConnection();
 
     try {
-      const query = `SELECT deg.deg_id,deg.deg_name,deg.levels FROM degree deg LEFT JOIN  dep_deg dd ON deg.deg_id = dd.deg_id where dd.d_id = ? AND deg.status = 'true'`;
+      const [results] = await conn.query(
+        "CALL GetActiveDegreesInDepartment(?);",
+        [d_id]
+      );
 
-      const [results] = await conn.execute(query, [d_id]);
-
-      return res.status(200).json(results);
+      return res.status(200).json(results[0]); // First result set contains data
     } catch (error) {
-      console.error("Error fetching active degrees with level count:", error);
+      console.error(
+        "Error fetching active degrees in a department with levels count:",
+        error
+      );
       return next(
-        errorProvider(500, "Failed to fetching active degrees with level count")
+        errorProvider(
+          500,
+          "Failed to fetch active degrees in a department with levels count"
+        )
       );
     } finally {
       conn.release();
@@ -984,20 +1175,22 @@ export const getActiveDegreesInADepartmentWithLevelsCount = async (
 export const getAllLevelsInADegree = async (req, res, next) => {
   const { deg_id } = req.body;
 
+  if (!deg_id) {
+    return next(errorProvider(400, "Missing deg_id."));
+  }
+
   try {
     const conn = await pool.getConnection();
 
     try {
-      const query = `SELECT deg.deg_id,deg.deg_name,deg.levels FROM degree deg LEFT JOIN  dep_deg dd ON deg.deg_id = dd.deg_id where dd.d_id = ? AND deg.status = 'true'`;
+      const [results] = await conn.query("CALL GetAllLevelsInDegree(?);", [
+        deg_id,
+      ]);
 
-      const [results] = await conn.execute(query, [deg_id]);
-
-      return res.status(200).json(results);
+      return res.status(200).json(results[0]); // First result set contains data
     } catch (error) {
-      console.error("Error fetching active degrees with level count:", error);
-      return next(
-        errorProvider(500, "Failed to fetching active degrees with level count")
-      );
+      console.error("Error fetching levels in a degree:", error);
+      return next(errorProvider(500, "Failed to fetch levels in a degree"));
     } finally {
       conn.release();
     }

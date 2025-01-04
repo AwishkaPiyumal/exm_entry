@@ -1,5 +1,4 @@
 "use client";
-import { columns } from "./Columns";
 import { Input } from "@/components/ui/input";
 import { useEffect, useState, useRef } from "react";
 import { MdCancel } from "react-icons/md";
@@ -11,10 +10,18 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Modal from "./Model";
-import { getAllDegreesWithExtraDetails } from "@/utils/apiRequests/course.api";
+import {
+  getAllDegreesWithExtraDetails,
+  updateDegreeStatus,
+} from "@/utils/apiRequests/course.api";
 import { DataTable } from "@/components/DataTable";
+import { Button } from "@/components/ui/button";
+import { ArrowUpDown } from "lucide-react";
+import { FaPen } from "react-icons/fa6";
+import { Switch } from "@/components/ui/switch";
+import { toast } from "sonner";
 
 const DegreeDetails = () => {
   const [filteredData, setFilteredData] = useState([]);
@@ -24,10 +31,113 @@ const DegreeDetails = () => {
   const modalRef = useRef(null);
   const [editId, setEditId] = useState("");
 
+  const queryClient = useQueryClient();
+
   const { data, isLoading, error } = useQuery({
     queryFn: getAllDegreesWithExtraDetails,
     queryKey: ["degreesExtra"],
   });
+
+  const { mutate } = useMutation({
+    mutationFn: updateDegreeStatus,
+    onSuccess: (res) => {
+      queryClient.invalidateQueries(["degreesExtra"]);
+      setEditId("");
+      toast(res.message);
+    },
+    onError: (err) => {
+      console.log(err);
+      setEditId("");
+      toast("Operation failed");
+    },
+  });
+
+  const onStatusChanged = async (e) => {
+    let id = e.split(":")[0];
+    let status = e.split(":")[1];
+    mutate({ id, status });
+  };
+
+  const columns = [
+    {
+      accessorKey: "deg_name",
+      header: ({ column }) => {
+        return (
+          <Button
+            variant="ghost"
+            onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+          >
+            Name
+            <ArrowUpDown className="ml-2 h-4 w-4" />
+          </Button>
+        );
+      },
+    },
+    {
+      accessorKey: "short",
+      header: "Short Name",
+    },
+    {
+      accessorKey: "faculty_name",
+      header: "Faculty",
+    },
+    {
+      accessorKey: "department_name",
+      header: "Department",
+    },
+    {
+      accessorKey: "levels",
+      header: "Levels",
+      cell: ({ row }) => {
+        return (
+          <div>
+            {row.original.levels.split(":").map((level) => (
+              <div key={level}>Level&nbsp;{level}</div>
+            ))}
+          </div>
+        );
+      },
+    },
+    {
+      accessorKey: "no_of_sem_per_year",
+      header: "Semesters per Level",
+      cell: ({ row }) => {
+        return <p className="text-right">{row.original.no_of_sem_per_year}</p>;
+      },
+    },
+    {
+      accessorKey: "status",
+      header: "Status",
+      cell: ({ row }) => {
+        return (
+          <Switch
+            id={row.original.deg_id}
+            onCheckedChange={(e) =>
+              onStatusChanged(row.original.deg_id + ":" + e)
+            }
+            checked={row.original.status == "true"}
+          />
+        );
+      },
+    },
+    {
+      id: "actions",
+      header: "Actions",
+
+      cell: ({ row }) => {
+        return (
+          <Button
+            variant="outline"
+            className="editBtn"
+            id={row.original.deg_id}
+          >
+            <FaPen />
+            &nbsp;Edit
+          </Button>
+        );
+      },
+    },
+  ];
 
   const onClearClicked = () => setSearchValue("");
 

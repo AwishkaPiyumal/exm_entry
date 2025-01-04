@@ -60,7 +60,7 @@ import {
 } from "@/utils/apiRequests/batch.api";
 
 const Model = ({ editId, isOpen, setIsOpen, modalRef, setEditId }) => {
-  const [formData, setFormData] = useState({ status: "true" });
+  const [formData, setFormData] = useState({});
   const [sidePartEnable, setSidePartEnable] = useState(false);
   const [btnEnable, setBtnEnable] = useState(false);
   const queryClient = useQueryClient();
@@ -164,8 +164,6 @@ const Model = ({ editId, isOpen, setIsOpen, modalRef, setEditId }) => {
           e.target?.name == "sem_no" ? e.target?.value : formData.sem_no || "X"
         }`,
       }));
-    } else if (typeof e == "boolean") {
-      setFormData((curData) => ({ ...curData, status: e.toString() }));
     } else {
       setFormData((curData) => ({
         ...curData,
@@ -228,7 +226,7 @@ const Model = ({ editId, isOpen, setIsOpen, modalRef, setEditId }) => {
       mutate({ batch_code, subjects, status });
     }
 
-    setFormData({ status: "true" });
+    setFormData({});
     setIsOpen(false);
   };
 
@@ -239,7 +237,7 @@ const Model = ({ editId, isOpen, setIsOpen, modalRef, setEditId }) => {
         old_batch_code: data.batch_code,
         old_subjects: data.subjects,
         old_status: data.status,
-      } || { status: "true" }
+      } || {}
     );
   };
 
@@ -348,7 +346,7 @@ const Model = ({ editId, isOpen, setIsOpen, modalRef, setEditId }) => {
                 className="text-2xl hover:cursor-pointer hover:text-zinc-700"
                 onClick={() => {
                   setIsOpen(false);
-                  setFormData({ status: "true" });
+                  setFormData({});
                   setEditId("");
                 }}
               />
@@ -360,7 +358,7 @@ const Model = ({ editId, isOpen, setIsOpen, modalRef, setEditId }) => {
                 >
                   <div className="grid grid-cols-4 items-center gap-4">
                     <Label htmlFor="batch_code" className="text-right">
-                      Batch ID
+                      Batch Code
                     </Label>
                     <Input
                       id="batch_code"
@@ -478,6 +476,10 @@ const Model = ({ editId, isOpen, setIsOpen, modalRef, setEditId }) => {
                             checked={formData.level == item}
                             name="level"
                             onChange={(e) => onFormDataChanged(e)}
+                            onBlur={(e) => {
+                              e.target.value = e.target.value.trim();
+                              onFormDataChanged(e);
+                            }}
                             className="h-4 w-4 shadow focus:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 accent-black"
                           />
                           <Label
@@ -506,6 +508,10 @@ const Model = ({ editId, isOpen, setIsOpen, modalRef, setEditId }) => {
                             checked={formData.sem_no == item}
                             name="sem_no"
                             onChange={(e) => onFormDataChanged(e)}
+                            onBlur={(e) => {
+                              e.target.value = e.target.value.trim();
+                              onFormDataChanged(e);
+                            }}
                             className="h-4 w-4 shadow focus:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 accent-black"
                           />
                           <Label
@@ -516,24 +522,6 @@ const Model = ({ editId, isOpen, setIsOpen, modalRef, setEditId }) => {
                           </Label>
                         </div>
                       ))}
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-4 gap-4">
-                    <Label className="text-right">Status</Label>
-                    <div className="items-top flex space-x-2 col-span-3 items-center">
-                      <Checkbox
-                        id="status"
-                        onCheckedChange={(e) => onFormDataChanged(e)}
-                        checked={formData?.status === "true"}
-                      />
-                      <div className="grid gap-1.5 leading-none">
-                        <label
-                          htmlFor="status"
-                          className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
-                        >
-                          Active
-                        </label>
-                      </div>
                     </div>
                   </div>
                 </div>
@@ -573,8 +561,8 @@ const Model = ({ editId, isOpen, setIsOpen, modalRef, setEditId }) => {
                                     <ChevronsUpDown className="opacity-50 size-[17px] " />
                                   </button>
                                 </PopoverTrigger>
-                                <PopoverContent className="py-0 px-1 border-none shadow-none">
-                                  <Command className="border shadow-md">
+                                <PopoverContent className="py-0 px-1 border-none shadow-none w-full">
+                                  <Command className="border shadow-md w-full">
                                     <CommandInput placeholder="Search manager" />
                                     <CommandList>
                                       <CommandEmpty>
@@ -651,9 +639,9 @@ const Model = ({ editId, isOpen, setIsOpen, modalRef, setEditId }) => {
                         &nbsp; year, {formData.sem_no}
                         {formData.sem_no == "1" ? (
                           <sup>st</sup>
-                        ) : formData.level == "2" ? (
+                        ) : formData.sem_no == "2" ? (
                           <sup>nd</sup>
-                        ) : formData.level == "3" ? (
+                        ) : formData.sem_no == "3" ? (
                           <sup>rd</sup>
                         ) : (
                           <sup>th</sup>

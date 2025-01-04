@@ -76,3 +76,65 @@ export const numberToOrdinalWord = (numStr) => {
 
   return tensWords[tens].replace("ieth", "y-") + ordinalWords[ones];
 };
+
+export function titleCase(str) {
+  const excludedWords = [
+    "and",
+    "or",
+    "but",
+    "nor",
+    "the",
+    "a",
+    "an",
+    "in",
+    "on",
+    "at",
+    "to",
+    "by",
+    "for",
+    "with",
+    "of",
+    "from",
+  ];
+  return str
+    .toLowerCase()
+    .split(" ")
+    .map((word, index) => {
+      if (index === 0 || !excludedWords.includes(word)) {
+        return word.charAt(0).toUpperCase() + word.slice(1);
+      }
+      return word;
+    })
+    .join(" ");
+}
+
+export const convertUTCToLocal = (utcDateStr) => {
+  // Step 1: Parse the UTC date
+  const date = new Date(utcDateStr);
+
+  // Step 2: Convert to the desired time zone and format
+  const options = {
+    timeZone: "Asia/Colombo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23", // Use 24-hour format
+  };
+
+  // Adjust time and format to local string
+  const localDateStr = date.toLocaleString("en-GB", options); // e.g., "09/12/2024, 06:50"
+
+  // Step 3: Reformat the string to "yyyy-MM-ddThh:mm"
+  const [datePart, timePart] = localDateStr.split(", ");
+  return datePart.split("/").reverse().join("-") + "T" + timePart;
+};
+
+export function getModifiedDate(date) {
+  const day = String(date.getDate()).padStart(2, "0");
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const year = date.getFullYear();
+
+  return `${day}.${month}.${year}`;
+}

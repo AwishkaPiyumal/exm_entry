@@ -8,14 +8,10 @@ const badgeVariants = cva(
   {
     variants: {
       variant: {
-        success:
-          "border-transparent bg-green-200 text-foreground shadow hover:bg-primarygreen-200/80",
-        pending:
-          "border-transparent bg-yellow-300 text-foreground shadow hover:bg-yellow-200/80",
-        failure:
-          "border-transparent bg-red-200 text-foreground shadow hover:bg-red-200/80",
-        active:
-          "border-transparent bg-blue-300 text-foreground shadow hover:bg-blue-200/80",
+        success: "border-transparent bg-green-200 text-foreground shadow ",
+        pending: "border-transparent bg-yellow-300 text-foreground shadow ",
+        failure: "border-transparent bg-red-200 text-foreground shadow ",
+        active: "border-transparent bg-blue-300 text-foreground shadow ",
         outline: "text-foreground",
       },
     },

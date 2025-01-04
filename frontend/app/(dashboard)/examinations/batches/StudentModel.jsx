@@ -28,7 +28,10 @@ const StudentModel = ({
   const queryClient = useQueryClient();
 
   const { data: oldData, refetch: oldDataRefetch } = useQuery({
-    queryFn: () => getStudentsByBatchId(feedId),
+    queryFn: () => {
+      console.log(feedId);
+      return getStudentsByBatchId(feedId);
+    },
     queryKey: ["students", "batch", feedId],
     enabled: false,
   });
@@ -58,7 +61,7 @@ const StudentModel = ({
 
   useEffect(() => {
     console.log(oldData);
-    setSelectedStudents(oldData);
+    if (oldData && oldData.length) setSelectedStudents(oldData);
   }, [oldData]);
 
   return (
@@ -79,6 +82,7 @@ const StudentModel = ({
                   onFormReset();
                   setFeedId("");
                   setFeedDegShort("");
+                  setSelectedStudents([]);
                 }}
               />
             </div>

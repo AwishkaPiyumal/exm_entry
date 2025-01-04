@@ -30,27 +30,26 @@ const users = () => {
       <div className="md:w-[70%] flex gap-6 flex-wrap">
         <Link
           href={`${pathname}/managers`}
-          className="w-[30%] hover:shadow-md rounded-xl"
+          className="min-w-[30%] max-w-[30%] hover:shadow-md rounded-xl"
         >
           <Card>
             <CardHeader>
               <CardTitle>Managers</CardTitle>
               <CardDescription>
-                {" "}
                 {noOfManagersData?.count} {noOfManagersData && "Managers"}
               </CardDescription>
             </CardHeader>
           </Card>
         </Link>
+
         <Link
           href={`${pathname}/students`}
-          className="w-[30%] hover:shadow-md rounded-xl"
+          className="min-w-[30%] max-w-[30%] hover:shadow-md rounded-xl"
         >
           <Card>
             <CardHeader>
               <CardTitle>Students</CardTitle>
               <CardDescription>
-                {" "}
                 {noOfStudentsData?.count} {noOfStudentsData && "Students"}
               </CardDescription>
             </CardHeader>

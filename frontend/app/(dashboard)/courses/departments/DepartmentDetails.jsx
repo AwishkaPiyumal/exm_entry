@@ -1,6 +1,5 @@
 "use client";
 
-import { columns } from "./Columns";
 import { Input } from "@/components/ui/input";
 import { useEffect, useRef, useState } from "react";
 import { MdCancel } from "react-icons/md";
@@ -12,11 +11,18 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Modal from "./Model";
-import { getAllDepartmentsWithExtraDetails } from "@/utils/apiRequests/course.api";
+import {
+  getAllDepartmentsWithExtraDetails,
+  updateDepartmentStatus,
+} from "@/utils/apiRequests/course.api";
 import { DataTable } from "@/components/DataTable";
-
+import { Button } from "@/components/ui/button";
+import { ArrowUpDown } from "lucide-react";
+import { FaPen } from "react-icons/fa6";
+import { Switch } from "@/components/ui/switch";
+import { toast } from "sonner";
 const DepartmentDetails = () => {
   const [filteredData, setFilteredData] = useState([]);
   const [searchValue, setSearchValue] = useState("");
@@ -24,11 +30,95 @@ const DepartmentDetails = () => {
   const [isOpen, setIsOpen] = useState(false);
   const modalRef = useRef(null);
   const [editId, setEditId] = useState("");
+  const queryClient = useQueryClient();
 
   const { data, isLoading, error } = useQuery({
     queryFn: getAllDepartmentsWithExtraDetails,
     queryKey: ["departmentsExtra"],
   });
+
+  const { mutate } = useMutation({
+    mutationFn: updateDepartmentStatus,
+    onSuccess: (res) => {
+      queryClient.invalidateQueries(["departmentsExtra"]);
+      setEditId("");
+      toast(res.message);
+    },
+    onError: (err) => {
+      console.log(err);
+      setEditId("");
+      toast("Operation failed");
+    },
+  });
+  const onStatusChanged = async (e) => {
+    let id = e.split(":")[0];
+    let status = e.split(":")[1];
+    mutate({ id, status });
+  };
+
+  const columns = [
+    {
+      accessorKey: "d_name",
+      header: ({ column }) => {
+        return (
+          <Button
+            variant="ghost"
+            onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+          >
+            Name
+            <ArrowUpDown className="ml-2 h-4 w-4" />
+          </Button>
+        );
+      },
+    },
+    {
+      accessorKey: "faculty_name",
+      header: "Faculty",
+    },
+    {
+      accessorKey: "degree_count",
+      header: "No of Degree programmes",
+    },
+    {
+      id: "email",
+      header: "Email",
+      cell: ({ row }) => {
+        return <p className="lowercase">{row.original.email}</p>;
+      },
+    },
+    {
+      accessorKey: "contact_no",
+      header: "Contact No",
+    },
+    {
+      accessorKey: "status",
+      header: "Status",
+      cell: ({ row }) => {
+        return (
+          <Switch
+            id={row.original.d_id}
+            onCheckedChange={(e) =>
+              onStatusChanged(row.original.d_id + ":" + e)
+            }
+            checked={row.original.status == "true"}
+          />
+        );
+      },
+    },
+    {
+      id: "actions",
+      header: "Actions",
+
+      cell: ({ row }) => {
+        return (
+          <Button variant="outline" className="editBtn" id={row.original.d_id}>
+            <FaPen />
+            &nbsp;Edit
+          </Button>
+        );
+      },
+    },
+  ];
 
   const onClearClicked = () => setSearchValue("");
 

@@ -5,12 +5,13 @@ import {
   updateStudent,
   updateManager,
   getManagerById,
-  deleteUser,
   getStudentById,
   getNoOfManagers,
   getNoOfStudents,
   getAllActiveManagers,
   getStudentByDegShort,
+  updateStudentStatus,
+  updateManagerStatus,
 } from "../controllers/user.controller.js";
 
 const router = express.Router();
@@ -24,9 +25,9 @@ router.post("/getManagerById", getManagerById);
 router.post("/getStudentById", getStudentById);
 
 router.put("/updateStudent", updateStudent);
+router.put("/updateStudentStatus", updateStudentStatus);
 router.put("/updateManager", updateManager);
-
-router.delete("/deleteUser", deleteUser);
+router.put("/updateManagerStatus", updateManagerStatus);
 
 router.get("/getNoOfManagers", getNoOfManagers);
 router.get("/getNoOfStudents", getNoOfStudents);
