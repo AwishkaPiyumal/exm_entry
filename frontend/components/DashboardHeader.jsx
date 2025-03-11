@@ -18,6 +18,8 @@ import {
 } from "@/components/ui/popover";
 import { Button } from "./ui/button";
 import user_avatar from "./../images/user_avatar.jpg";
+import Link from "next/link";
+import { FaKey } from "react-icons/fa6";
 const regex = /^[a-zA-Z]+\d+$/;
 
 const DashboardHeader = ({ logoutHandler }) => {
@@ -27,8 +29,8 @@ const DashboardHeader = ({ logoutHandler }) => {
   if (error) return (window.location.href = "/");
 
   return (
-    <div className="fixed top-20 z-50 w-full border-border/40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 h-12 shadow flex justify-between px-5  items-center">
-      <Breadcrumb>
+    <div className="fixed top-14 sm:top-16 md:top-18 lg:top-20 z-50 w-full border-border/40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 h-12 shadow flex justify-end sm:justify-between px-2 sm:px-5  items-center text-sm md:text-base">
+      <Breadcrumb className="hidden sm:inline-block">
         <BreadcrumbList>
           {pathname.map((item, ind) => {
             if (ind !== pathname.length - 1) {
@@ -68,8 +70,8 @@ const DashboardHeader = ({ logoutHandler }) => {
         <PopoverTrigger>
           <div className="flex items-center gap-3">
             <h1 className="capitalize">{user?.name || user?.user_name}</h1>
-            <Avatar>
-              <AvatarImage src={user_avatar.src} />
+            <Avatar className="flex justify-center items-center">
+              <AvatarImage src={user_avatar.src} className="size-[34px]" />
               <AvatarFallback>
                 <span className="inline-block capitalize">
                   {user?.name?.slice(0, 2) || user?.user_name?.slice(0, 2)}
@@ -78,8 +80,15 @@ const DashboardHeader = ({ logoutHandler }) => {
             </Avatar>
           </div>
         </PopoverTrigger>
-        <PopoverContent>
-          <Button variant="outline" onClick={logoutHandler}>
+        <PopoverContent className="w-48">
+          <Link
+            href="/change password"
+            className="text-sm flex items-center border-y border-zinc-200 py-3"
+          >
+            Change password&nbsp;&nbsp;&nbsp;&nbsp;
+            <FaKey />
+          </Link>
+          <Button className="mt-6" variant="outline" onClick={logoutHandler}>
             Logout
           </Button>
         </PopoverContent>

@@ -21,12 +21,11 @@ const Model = ({ editId, isOpen, setIsOpen, modalRef, setEditId }) => {
     onSuccess: (res) => {
       queryClient.invalidateQueries(["managers"]);
       setEditId("");
-      toast(res.message);
+      toast.success(res.message);
     },
     onError: (err) => {
-      console.log(err);
       setEditId("");
-      toast("Operation failed");
+      toast.error("Operation failed");
     },
   });
 

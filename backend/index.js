@@ -12,6 +12,7 @@ import entryRouter from "./routes/entry.route.js";
 
 import { generatePassword, hashPassword } from "./utils/functions.js";
 import pool from "./config/db.js";
+import "./utils/cronScheduler.js";
 
 dotenv.config();
 

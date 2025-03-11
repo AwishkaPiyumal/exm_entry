@@ -10,39 +10,103 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { getAllStudents } from "@/utils/apiRequests/user.api";
 import { EntriesDataTable } from "@/components/EntriesDataTable";
 import {
-  getAppliedStudentsForSubject,
   updateEligibility,
+  updateMultipleEligibility,
 } from "@/utils/apiRequests/curriculum.api";
-import axiosInstance from "@/lib/axiosInstance";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
+import {
+  getAppliedStudentsForSubject,
+  getAppliedStudentsForSubjectOfDepartment,
+  getAppliedStudentsForSubjectOfFaculty,
+} from "@/utils/apiRequests/entry.api";
+import { getDeadlinesForBatch } from "@/utils/apiRequests/batch.api";
+import { useUser } from "@/utils/useUser";
+import { usePathname } from "next/navigation";
+import Link from "next/link";
 
-const StudentDetails = ({ sub_id, batch_id, deadline }) => {
+const StudentDetails = ({ sub_id, batch_id, sub_name, sub_code }) => {
   const queryClient = useQueryClient();
+  const pathname = usePathname();
   const [filteredData, setFilteredData] = useState([]);
   const [searchValue, setSearchValue] = useState("");
+  const [endDate, setEndDate] = useState(null);
 
-  const { data } = useQuery({
-    queryFn: () => getAppliedStudentsForSubject(batch_id, sub_id),
+  const [roleId, setRoleID] = useState(null);
+  const { data: user, isLoading } = useUser();
+
+  useEffect(() => {
+    if (user?.role_id) {
+      setRoleID(user?.role_id);
+    }
+  }, [user]);
+
+  const { data, error } = useQuery({
+    queryFn: () =>
+      roleId == "1" ? getAppliedStudentsForSubject(batch_id, sub_id) : null,
     queryKey: ["students", "subject", sub_id],
+    enabled: roleId == "1",
   });
+
+  if (error?.response?.status == 500) {
+    window.location.href = "/home";
+  }
 
   const { mutate } = useMutation({
     mutationFn: updateEligibility,
     onSuccess: (res) => {
       queryClient.invalidateQueries(["students", "subject", sub_id]);
-      toast(res.message);
+      toast.success(res.message);
     },
     onError: (err) => {
-      console.log(err);
-      toast("Operation failed");
+      toast.error("Operation failed");
     },
   });
 
-  const onEligibilityChanged = async (e) => {
-    let s_id = e.split(":")[0];
-    let eligibility = e.split(":")[1];
-    mutate({ batch_id, sub_id, eligibility, s_id });
+  const { data: deadlinesOfBatchData } = useQuery({
+    queryFn: () => getDeadlinesForBatch(batch_id),
+    queryKey: ["deadlinesOfBatch", batch_id],
+  });
+
+  const { mutate: mutateMultiple } = useMutation({
+    mutationFn: updateMultipleEligibility,
+    onSuccess: (res) => {
+      queryClient.invalidateQueries(["students", "subject", sub_id]);
+      toast.success(res.message);
+    },
+    onError: (err) => {
+      toast.error("Operation failed");
+    },
+  });
+
+  const onEligibilityChanged = async (s_id, eligibility, remark) => {
+    mutate({ batch_id, sub_id, eligibility, s_id, remark });
   };
+
+  const onMultipleEligibilityChanged = async (eligibility, remark) => {
+    mutateMultiple({
+      batch_id,
+      sub_id,
+      eligibility,
+      s_ids: filteredData.map((stu) => stu.s_id),
+      remark,
+    });
+  };
+
+  useEffect(() => {
+    if (deadlinesOfBatchData && deadlinesOfBatchData.length) {
+      let end = new Date(
+        deadlinesOfBatchData.find((obj) => obj.user_type == "2")?.deadline
+      );
+
+      setEndDate(end);
+    }
+  }, [deadlinesOfBatchData]);
 
   const columns = [
     {
@@ -79,12 +143,10 @@ const StudentDetails = ({ sub_id, batch_id, deadline }) => {
       cell: ({ row }) => {
         return (
           <p className="text-center ">
-            {row.original.attendance == "M"
-              ? "Medical"
-              : row.original.attendance == "R"
-              ? "Resit"
-              : row.original.attendance
-              ? row.original.attendance + "%"
+            {row.original.attendance
+              ? +row.original.attendance
+                ? row.original.attendance + "%"
+                : row.original.attendance
               : "0%"}
           </p>
         );
@@ -92,18 +154,97 @@ const StudentDetails = ({ sub_id, batch_id, deadline }) => {
     },
     {
       id: "Eligibility",
-      header: "Eligibility",
-      cell: ({ row }) => {
-        return (
-          <Switch
-            id={row.original.s_id}
-            onCheckedChange={(e) => {
-              console.log(row.original);
+      header: () => {
+        const [remark, setRemark] = useState("");
+        const triggerRef = useRef(null);
 
-              onEligibilityChanged(row.original.s_id + ":" + e);
-            }}
-            checked={row.original.eligibility == "true"}
-          />
+        const isAnyoneNotEligible = filteredData.some(
+          (stu) => stu.eligibility == "false"
+        );
+        return (
+          <div className="flex justify-between">
+            <span>Eligibility</span>
+            <Switch
+              onClick={(e) => {
+                e.preventDefault();
+                triggerRef.current.click();
+              }}
+              checked={filteredData.length && !isAnyoneNotEligible}
+              disabled={!filteredData.length}
+            />
+            <Popover>
+              <PopoverTrigger
+                ref={triggerRef}
+                className="w-[0px]"
+              ></PopoverTrigger>
+              <PopoverContent className="w-64 h-40 flex flex-col gap-2 items-start">
+                <p className="font-semibold flex justify-between text-sm w-full">
+                  <span>Enter Remark</span>
+                  <span>All/Filtered Students</span>
+                </p>
+                <Textarea
+                  onChange={(e) => setRemark(e.target.value)}
+                  onBlur={() => setRemark("")}
+                  value={remark}
+                />
+                <Button
+                  className="self-end changeEli"
+                  onMouseDown={() => {
+                    if (remark) {
+                      onMultipleEligibilityChanged(
+                        isAnyoneNotEligible + "",
+                        remark
+                      );
+                    }
+                  }}
+                  disabled={!remark}
+                >
+                  Change Eligibility
+                </Button>
+              </PopoverContent>
+            </Popover>
+          </div>
+        );
+      },
+      cell: ({ row }) => {
+        const [remark, setRemark] = useState("");
+
+        return (
+          <Popover>
+            <PopoverTrigger className="trigger flex justify-center w-full">
+              <Switch
+                id={row.original.s_id}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.target.parentElement.click();
+                }}
+                checked={row.original.eligibility == "true"}
+              />
+            </PopoverTrigger>
+            <PopoverContent className="w-64 h-40 flex flex-col gap-2 items-start">
+              <p className="font-semibold flex justify-between text-sm w-full">
+                <span>Enter Remark</span>
+                <span>{row.original.user_name}</span>
+              </p>
+              <Textarea
+                onChange={(e) => setRemark(e.target.value)}
+                onBlur={() => setRemark("")}
+                value={remark}
+              />
+              <Button
+                className="self-end changeEli"
+                onMouseDown={() => {
+                  if (remark) {
+                    const val = row.original.eligibility == "true";
+                    onEligibilityChanged(row.original.s_id, !val + "", remark);
+                  }
+                }}
+                disabled={!remark}
+              >
+                Change Eligibility
+              </Button>
+            </PopoverContent>
+          </Popover>
         );
       },
     },
@@ -131,7 +272,7 @@ const StudentDetails = ({ sub_id, batch_id, deadline }) => {
 
   return (
     <>
-      <div className="flex justify-between mb-2 items-start">
+      <div className="flex justify-between mb-3">
         <div className="bg-white rounded-md flex relative">
           <Input
             placeholder="Search by name or user name"
@@ -148,6 +289,24 @@ const StudentDetails = ({ sub_id, batch_id, deadline }) => {
             <MdCancel className="size-5 cursor-pointer" />
           </span>
         </div>
+        {endDate && endDate < new Date() && (
+          <div className="flex">
+            <Link
+              href={{
+                pathname: `${pathname}/attendance`,
+                query: {
+                  batch_id,
+                  sub_id,
+                  sub_name,
+                  sub_code,
+                },
+              }}
+              className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0 bg-primary text-primary-foreground shadow hover:bg-primary/90 h-9 px-4 py-2"
+            >
+              Generate attendance
+            </Link>
+          </div>
+        )}
       </div>
       <div className="container mx-auto">
         <EntriesDataTable columns={columns} data={filteredData} />

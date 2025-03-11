@@ -18,7 +18,7 @@ const StudentRow = ({
     <TableRow className="flex">
       <TableCell className="w-[150px]">
         {selectedSubjects[row]?.userName}
-      </TableCell>{" "}
+      </TableCell>
       <TableCell className="w-8 text-center">
         <GiCancel
           className="text-xl text-red-500 hover:cursor-pointer hover:text-red-700"

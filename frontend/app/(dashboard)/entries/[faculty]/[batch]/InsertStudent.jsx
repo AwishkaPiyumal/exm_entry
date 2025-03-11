@@ -61,12 +61,10 @@ const InsertStudent = ({
   }, [nonBatchStudentsData]);
 
   useEffect(() => {
-    console.log(sId);
     sId && refetchStudentSubjectsData();
   }, [sId]);
 
   useEffect(() => {
-    console.log(studentSubjectsData);
     if (studentSubjectsData?.length) {
       sId &&
         setSelectedSubjects((cur) => ({

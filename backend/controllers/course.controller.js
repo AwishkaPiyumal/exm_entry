@@ -51,6 +51,9 @@ export const createFaculty = async (req, res, next) => {
         status,
       ]);
 
+      let desc = `Faculty created with f_name=${f_name}, user_id=${user_id}, email=${email}, contact_no=${contact_no}`;
+      await conn.query("CALL LogAdminAction(?);", [desc]);
+
       await conn.commit();
       await mailer(email, email, password);
 
@@ -105,6 +108,9 @@ export const updateFaculty = async (req, res, next) => {
       // Step 3: Update user details
       await conn.query("CALL UpdateUserDetails(?, ?);", [user_id, email]);
 
+      let desc = `Faculty updated for f_id=${f_id} with f_name=${f_name}, user_id=${user_id}, email=${email}, contact_no=${contact_no}`;
+      await conn.query("CALL LogAdminAction(?);", [desc]);
+
       await conn.commit();
 
       return res.status(200).json({ message: "Faculty updated successfully" });
@@ -150,6 +156,9 @@ export const updateFacultyStatus = async (req, res, next) => {
 
       // Step 2: Update faculty details
       await conn.query("CALL updateFacultyStatus(?, ?);", [f_id, status]);
+
+      let desc = `Batch status changed for f_id=${f_id} to status=${status}`;
+      await conn.query("CALL LogAdminAction(?);", [desc]);
 
       await conn.commit();
 
@@ -217,6 +226,9 @@ export const createDepartment = async (req, res, next) => {
       // Step 5: Link the department to the faculty
       await conn.query("CALL LinkFacultyDepartment(?, ?);", [f_id, d_id]);
 
+      let desc = `Department created with d_id=${d_id} for f_id=${f_id}, d_name=${d_name}, user_id=${user_id}, contact_no=${contact_no}`;
+      await conn.query("CALL LogAdminAction(?);", [desc]);
+
       await conn.commit();
 
       // Send email notification to the department user
@@ -279,6 +291,9 @@ export const updateDepartment = async (req, res, next) => {
       // Step 4: Update faculty-department link
       await conn.query("CALL UpdateFacultyDepartmentLink(?, ?);", [f_id, d_id]);
 
+      let desc = `Department updated for d_id=${d_id} with d_name=${d_name}, user_id=${user_id}, email=${email}, contact_no=${contact_no}`;
+      await conn.query("CALL LogAdminAction(?);", [desc]);
+
       await conn.commit();
 
       return res
@@ -327,6 +342,9 @@ export const updateDepartmentStatus = async (req, res, next) => {
 
       // Step 2: Update department details
       await conn.query("CALL updateDepartmentStatus(?, ?);", [d_id, status]);
+
+      let desc = `Department status changed for d_id=${d_id} to status=${status}`;
+      await conn.query("CALL LogAdminAction(?);", [desc]);
 
       await conn.commit();
 
@@ -391,6 +409,9 @@ export const createDegree = async (req, res, next) => {
 
       // Step 3: Link the degree with the department
       await conn.query("CALL LinkDegreeWithDepartment(?, ?);", [d_id, deg_id]);
+
+      let desc = `Degree created with deg_id=${deg_id} for d_id=${d_id}, deg_name=${deg_name}, short=${short}, levels=${levels}, no_of_sem_per_year=${no_of_sem_per_year}, contact_no=${contact_no}`;
+      await conn.query("CALL LogAdminAction(?);", [desc]);
 
       await conn.commit();
 
@@ -478,6 +499,9 @@ export const updateDegree = async (req, res, next) => {
       // Step 4: Update department-degree link
       await conn.query("CALL UpdateDepDeg(?, ?);", [d_id, deg_id]);
 
+      let desc = `Degree updated for deg_id=${deg_id} with deg_name=${deg_name}, short=${short}, levels=${levels}, no_of_sem_per_year=${no_of_sem_per_year}`;
+      await conn.query("CALL LogAdminAction(?);", [desc]);
+
       await conn.commit();
 
       return res.status(200).json({ message: "Degree updated successfully" });
@@ -523,6 +547,9 @@ export const updateDegreeStatus = async (req, res, next) => {
 
       // Step 3: Update degree details
       await conn.query("CALL updateDegreeStatus(?, ?);", [deg_id, status]);
+
+      let desc = `Degree status changed for deg_id=${deg_id} to status=${status}`;
+      await conn.query("CALL LogAdminAction(?);", [desc]);
 
       await conn.commit();
 

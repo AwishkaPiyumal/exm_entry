@@ -138,3 +138,52 @@ export function getModifiedDate(date) {
 
   return `${day}.${month}.${year}`;
 }
+
+export function getDayName(date) {
+  let day;
+  switch (date.getDay()) {
+    case 0:
+      day = "Sunday";
+      break;
+    case 1:
+      day = "Monday";
+      break;
+    case 2:
+      day = "Tuesday";
+      break;
+    case 3:
+      day = "Wednesday";
+      break;
+    case 4:
+      day = "Thursday";
+      break;
+    case 5:
+      day = "Friday";
+      break;
+    case 6:
+      day = "Saturday";
+  }
+  return day;
+}
+
+export const createSubjectObject = (subjects) => {
+  const subjectMap = {};
+
+  subjects?.forEach((subject) => {
+    subjectMap[subject.sub_id] = subject;
+  });
+
+  return subjectMap;
+};
+
+export function sortByExamType(array) {
+  const examOrder = { P: 1, M: 2, R: 3 }; // Define the order of exam types
+  return array.sort((a, b) => {
+    // First, sort by exam_type order
+    const examComparison = examOrder[a.exam_type] - examOrder[b.exam_type];
+    if (examComparison !== 0) return examComparison;
+
+    // If exam_type is the same, sort by index_num lexicographically
+    return a.index_num.localeCompare(b.index_num);
+  });
+}

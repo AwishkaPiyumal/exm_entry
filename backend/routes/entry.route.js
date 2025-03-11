@@ -3,10 +3,21 @@ import {
   addMedicalResitStudents,
   applyExam,
   createOrUpdateAdmission,
+  createOrUpdateAttendance,
+  deleteBatchSubjectEntries,
   fetchStudentsWithSubjects,
+  fetchStudentWithSubjectsByUserId,
   generateIndexNumbers,
+  getAppliedStudentsForSubject,
+  getAppliedStudentsForSubjectOfDepartment,
+  getAppliedStudentsForSubjectOfFaculty,
+  getBatchAdmissionDetails,
+  getDeanDashboardData,
+  getEligibleStudentsBySub,
+  getHodDashboardData,
   getLastAssignedIndexNumber,
   getLatestAdmissionTemplate,
+  getLatestAttendanceTemplate,
   getStudentSubjects,
   getStudentsWithoutIndexNumber,
 } from "../controllers/entry.controller.js";
@@ -37,14 +48,62 @@ router.post(
   verifyUser(["1"]),
   createOrUpdateAdmission
 );
-router.get(
+router.post(
   "/getLatestAdmissionTemplate",
   verifyUser(["1"]),
   getLatestAdmissionTemplate
 );
 router.post(
   "/fetchStudentsWithSubjects",
-
+  verifyUser(["1"]),
   fetchStudentsWithSubjects
 );
+router.post(
+  "/getBatchAdmissionDetails",
+  verifyUser(["1", "5"]),
+  getBatchAdmissionDetails
+);
+router.post(
+  "/fetchStudentWithSubjectsByUserId",
+  verifyUser(["5"]),
+  fetchStudentWithSubjectsByUserId
+);
+router.post(
+  "/getEligibleStudentsBySub",
+  verifyUser(["1"]),
+  getEligibleStudentsBySub
+);
+router.post(
+  "/createOrUpdateAttendance",
+  verifyUser(["1"]),
+  createOrUpdateAttendance
+);
+router.post(
+  "/getLatestAttendanceTemplate",
+  verifyUser(["1"]),
+  getLatestAttendanceTemplate
+);
+router.post(
+  "/deleteBatchSubjectEntries",
+  verifyUser(["1"]),
+  deleteBatchSubjectEntries
+);
+router.get("/getDeanDashboardData", verifyUser(["2"]), getDeanDashboardData);
+router.get("/getHodDashboardData", verifyUser(["3"]), getHodDashboardData);
+router.post(
+  "/getAppliedStudentsForSubject",
+  verifyUser(["1", "4"]),
+  getAppliedStudentsForSubject
+);
+router.post(
+  "/getAppliedStudentsForSubjectOfFaculty",
+  verifyUser(["2"]),
+  getAppliedStudentsForSubjectOfFaculty
+);
+router.post(
+  "/getAppliedStudentsForSubjectOfDepartment",
+  verifyUser(["3"]),
+  getAppliedStudentsForSubjectOfDepartment
+);
+
 export default router;

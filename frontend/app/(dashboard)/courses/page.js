@@ -5,6 +5,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   getNoOfDegrees,
   getNoOfDepartments,
@@ -17,20 +18,38 @@ import { usePathname } from "next/navigation";
 const users = () => {
   const pathname = usePathname();
 
-  const { data: noOfFacultiesData } = useQuery({
-    queryFn: getNoOfFaculty,
-    queryKey: ["noOfFaculties"],
-  });
+  const { data: noOfFacultiesData, isLoading: isNoOfFacultiesDataLoading } =
+    useQuery({
+      queryFn: getNoOfFaculty,
+      queryKey: ["noOfFaculties"],
+    });
 
-  const { data: noOfDepartmentsData } = useQuery({
-    queryFn: getNoOfDepartments,
-    queryKey: ["noOfDepartments"],
-  });
+  const { data: noOfDepartmentsData, isLoading: isNoOfDepartmentsDataLoading } =
+    useQuery({
+      queryFn: getNoOfDepartments,
+      queryKey: ["noOfDepartments"],
+    });
 
-  const { data: noOfDegreesData } = useQuery({
-    queryFn: getNoOfDegrees,
-    queryKey: ["noOfDegrees"],
-  });
+  const { data: noOfDegreesData, isLoading: isNoOfDegreesDataLoading } =
+    useQuery({
+      queryFn: getNoOfDegrees,
+      queryKey: ["noOfDegrees"],
+    });
+
+  if (
+    isNoOfFacultiesDataLoading ||
+    isNoOfDepartmentsDataLoading ||
+    isNoOfDegreesDataLoading
+  )
+    return (
+      <div className="flex justify-end md:justify-center">
+        <div className="md:w-[70%] flex gap-6 flex-wrap">
+          {[1, 2, 3].map((_, i) => (
+            <Skeleton key={i} className="w-[30%] h-32 max-w-[30%] rounded-xl" />
+          ))}
+        </div>
+      </div>
+    );
 
   return (
     <div className="flex justify-end md:justify-center">

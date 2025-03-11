@@ -12,8 +12,6 @@ const RootLayout = ({ children }) => {
     try {
       const response = await axiosInstance.post("/auth/logout");
 
-      console.log(response.data.message);
-
       window.location.href = "/";
       // router.push("/");
     } catch (error) {

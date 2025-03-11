@@ -171,7 +171,7 @@ export const updateStudent = async (req, res, next) => {
     contact_no,
     index_num = "",
   } = req.body;
-  console.log(contact_no, index_num);
+
   if (!s_id || !name || !f_id || !email || !user_name) {
     return next(errorProvider(400, "Missing required fields"));
   }
@@ -183,7 +183,10 @@ export const updateStudent = async (req, res, next) => {
         "CALL UpdateStudent(?, ?, ?, ?, ?, ?, ?);",
         [name, f_id, s_id, email, user_name, contact_no, index_num]
       );
-      console.log(results);
+
+      let desc = `Student updated for s_id=${s_id}, name=${name}, f_id=${f_id}, email=${email}, user_name=${user_name}, contact_no=${contact_no}, index_num=${index_num}`;
+      await conn.query("CALL LogAdminAction(?);", [desc]);
+
       return res.status(200).json({ message: "Student updated successfully" });
     } catch (error) {
       if (error.sqlMessage?.includes("Email or username already exists")) {
@@ -213,6 +216,9 @@ export const updateStudentStatus = async (req, res, next) => {
     const conn = await pool.getConnection();
     try {
       await conn.query("CALL updateStudentStatus(?, ?);", [status, s_id]);
+
+      let desc = `Student status changed for s_id=${s_id} to status=${status}`;
+      await conn.query("CALL LogAdminAction(?);", [desc]);
 
       return res
         .status(200)
@@ -252,6 +258,9 @@ export const updateManager = async (req, res, next) => {
         m_id,
       ]);
 
+      let desc = `Manager updated for m_id=${m_id}, name=${name}, email=${email}, user_name=${user_name}, contact_no=${contact_no}`;
+      await conn.query("CALL LogAdminAction(?);", [desc]);
+
       return res.status(200).json({ message: "Manager updated successfully" });
     } catch (error) {
       if (error.sqlMessage?.includes("Email or username already exists")) {
@@ -281,6 +290,9 @@ export const updateManagerStatus = async (req, res, next) => {
     const conn = await pool.getConnection();
     try {
       await conn.query("CALL updateManagerStatus(?, ?);", [status, m_id]);
+
+      let desc = `Manager status changed for m_id=${m_id} to status=${status}`;
+      await conn.query("CALL LogAdminAction(?);", [desc]);
 
       return res
         .status(200)
@@ -339,6 +351,27 @@ export const getNoOfStudents = async (req, res, next) => {
       console.error("Error retrieving number of students:", error);
       return next(
         errorProvider(500, "An error occurred while fetching the student count")
+      );
+    } finally {
+      conn.release();
+    }
+  } catch (error) {
+    console.error("Database connection error:", error);
+    return next(errorProvider(500, "Failed to establish database connection"));
+  }
+};
+
+export const getSummaryData = async (req, res, next) => {
+  try {
+    const conn = await pool.getConnection();
+    try {
+      const [result] = await conn.query("CALL GetAdminSummary();");
+
+      return res.status(200).json(result[0][0]);
+    } catch (error) {
+      console.error("Error retrieving summary data:", error);
+      return next(
+        errorProvider(500, "An error occurred while fetching the summary data")
       );
     } finally {
       conn.release();

@@ -30,11 +30,10 @@ const IndexModel = ({
     mutationFn: generateIndexNumbers,
     onSuccess: (res) => {
       queryClient.invalidateQueries(["studentsWithoutIndexNumber", batch_id]);
-      toast(res.message);
+      toast.success(res.message);
     },
     onError: (err) => {
-      console.log(err);
-      toast("Operation failed");
+      toast.error("Operation failed");
     },
   });
 
@@ -54,7 +53,6 @@ const IndexModel = ({
         [e.target?.name]: e.target?.value,
       }));
     }
-    console.log(formData);
   };
 
   const onStartsFromChanged = (e) => {
@@ -64,7 +62,7 @@ const IndexModel = ({
     } else if (value > +e.target.max) {
       value = +e.target.max;
     }
-    console.log(value);
+
     setFormData((curData) => ({
       ...curData,
       [e.target?.name]: value,
@@ -83,10 +81,6 @@ const IndexModel = ({
     setIsIndexOpen(false);
     setFormData({});
   };
-
-  useEffect(() => {
-    console.log(lastAssignedIndexNumberData);
-  }, [lastAssignedIndexNumberData]);
 
   return (
     <>

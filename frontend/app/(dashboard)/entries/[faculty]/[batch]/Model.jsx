@@ -64,11 +64,10 @@ const Model = ({
   const { status, mutate } = useMutation({
     mutationFn: addMedicalResitStudents,
     onSuccess: (res) => {
-      toast(res.message);
+      toast.success(res.message);
     },
     onError: (err) => {
-      console.log(err);
-      toast("Operation failed");
+      toast.error("Operation failed");
     },
   });
 
@@ -84,14 +83,6 @@ const Model = ({
     setSelectedSubjects({});
     setRows([]);
   };
-
-  useEffect(() => {
-    console.log(selectedSubjects);
-  }, [selectedSubjects]);
-
-  useEffect(() => {
-    console.log(rows);
-  }, [rows]);
 
   return (
     <>
@@ -122,7 +113,9 @@ const Model = ({
                   <TableHead className="w-24 text-center">Type</TableHead>
                   {curriculumsOfBatchData &&
                     curriculumsOfBatchData.map((obj) => (
-                      <TableHead className="w-16">{obj.sub_code}</TableHead>
+                      <TableHead key={obj.sub_id} className="w-16">
+                        {obj.sub_code}
+                      </TableHead>
                     ))}
                 </TableRow>
               </TableHeader>

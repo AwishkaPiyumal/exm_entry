@@ -31,54 +31,95 @@ import {
   updateDepartmentStatus,
   updateFacultyStatus,
 } from "../controllers/course.controller.js";
+import { verifyUser } from "../utils/verifyUsers.js";
 
 const router = express.Router();
 
 ////////FACULTY
-router.post("/createFaculty", createFaculty);
-router.put("/updateFaculty", updateFaculty);
-router.put("/updateFacultyStatus", updateFacultyStatus);
-router.get("/getAllFaculties", getAllFaculties);
-router.post("/getFacultyById", getFacultyById);
-router.get("/getNoOfFaculty", getNoOfFaculty);
-router.post("/getNoOfDepartmentsByFaculty/:f_id", getNoOfDepartmentsByFaculty);
-router.get("/getAllFacultiesWithExtraDetails", getAllFacultiesWithExtraDetails);
+router.post("/createFaculty", verifyUser(["1"]), createFaculty);
+router.put("/updateFaculty", verifyUser(["1"]), updateFaculty);
+router.put("/updateFacultyStatus", verifyUser(["1"]), updateFacultyStatus);
+router.get("/getAllFaculties", verifyUser(["1"]), getAllFaculties);
+router.post("/getFacultyById", verifyUser(["1"]), getFacultyById);
+router.get("/getNoOfFaculty", verifyUser(["1"]), getNoOfFaculty);
+router.post(
+  "/getNoOfDepartmentsByFaculty/:f_id",
+  verifyUser(["1"]),
+  getNoOfDepartmentsByFaculty
+);
+router.get(
+  "/getAllFacultiesWithExtraDetails",
+  verifyUser(["1"]),
+  getAllFacultiesWithExtraDetails
+);
 router.get(
   "/getActiveFacultiesWithDepartmentsCount",
+  verifyUser(["1"]),
+
   getActiveFacultiesWithDepartmentsCount
 );
 
 ////////DEPARTMENT
-router.post("/createDepartment", createDepartment);
-router.put("/updateDepartment", updateDepartment);
-router.put("/updateDepartmentStatus", updateDepartmentStatus);
-router.get("/getAllDepartments", getAllDepartments);
-router.post("/getDepartmentById", getDepartmentById);
-router.post("/getDepartmentsByFacultyId", getDepartmentsByFacultyId);
-router.get("/getNoOfDepartments", getNoOfDepartments);
-router.post("/getNoOfDegreesByDepartment/:d_id", getNoOfDegreesByDepartment);
+router.post("/createDepartment", verifyUser(["1"]), createDepartment);
+router.put("/updateDepartment", verifyUser(["1"]), updateDepartment);
+router.put(
+  "/updateDepartmentStatus",
+  verifyUser(["1"]),
+  updateDepartmentStatus
+);
+router.get("/getAllDepartments", verifyUser(["1"]), getAllDepartments);
+router.post("/getDepartmentById", verifyUser(["1"]), getDepartmentById);
+router.post(
+  "/getDepartmentsByFacultyId",
+  verifyUser(["1"]),
+  getDepartmentsByFacultyId
+);
+router.get("/getNoOfDepartments", verifyUser(["1"]), getNoOfDepartments);
+router.post(
+  "/getNoOfDegreesByDepartment/:d_id",
+  verifyUser(["1"]),
+  getNoOfDegreesByDepartment
+);
 router.get(
   "/getAllDepartmentsWithExtraDetails",
+  verifyUser(["1"]),
+
   getAllDepartmentsWithExtraDetails
 );
 router.post(
   "/getActiveDepartmentsInAFacultyWithDegreesCount",
+  verifyUser(["1"]),
+
   getActiveDepartmentsInAFacultyWithDegreesCount
 );
 router.post(
   "/getActiveDegreesInADepartmentWithLevelsCount",
+  verifyUser(["1"]),
+
   getActiveDegreesInADepartmentWithLevelsCount
 );
 
 ////////DEGREE
-router.post("/createDegree", createDegree);
-router.put("/updateDegree", updateDegree);
-router.put("/updateDegreeStatus", updateDegreeStatus);
-router.get("/getAllDegrees", getAllDegrees);
-router.post("/getDegreeById", getDegreeById);
-router.post("/getDegreesByDepartmentId", getDegreesByDepartmentId);
-router.get("/getNoOfDegrees", getNoOfDegrees);
-router.post("/getNoOfDegreesByLevel/:levels", getNoOfDegreesByLevel);
-router.post("/getDegreeByShort", getDegreeByShort);
-router.get("/getAllDegreesWithExtraDetails", getAllDegreesWithExtraDetails);
+router.post("/createDegree", verifyUser(["1"]), createDegree);
+router.put("/updateDegree", verifyUser(["1"]), updateDegree);
+router.put("/updateDegreeStatus", verifyUser(["1"]), updateDegreeStatus);
+router.get("/getAllDegrees", verifyUser(["1"]), getAllDegrees);
+router.post("/getDegreeById", verifyUser(["1"]), getDegreeById);
+router.post(
+  "/getDegreesByDepartmentId",
+  verifyUser(["1"]),
+  getDegreesByDepartmentId
+);
+router.get("/getNoOfDegrees", verifyUser(["1"]), getNoOfDegrees);
+router.post(
+  "/getNoOfDegreesByLevel/:levels",
+  verifyUser(["1"]),
+  getNoOfDegreesByLevel
+);
+router.post("/getDegreeByShort", verifyUser(["1"]), getDegreeByShort);
+router.get(
+  "/getAllDegreesWithExtraDetails",
+  verifyUser(["1"]),
+  getAllDegreesWithExtraDetails
+);
 export default router;

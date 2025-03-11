@@ -12,26 +12,30 @@ import {
   getStudentByDegShort,
   updateStudentStatus,
   updateManagerStatus,
+  getSummaryData,
 } from "../controllers/user.controller.js";
+import { verifyUser } from "../utils/verifyUsers.js";
 
 const router = express.Router();
 
-router.get("/getAllStudents", getAllStudents);
-router.get("/getAllManagers", getAllManagers);
+router.get("/getAllStudents", verifyUser(["1"]), getAllStudents);
+router.get("/getAllManagers", verifyUser(["1"]), getAllManagers);
 
-router.get("/getAllActiveManagers", getAllActiveManagers);
+router.get("/getAllActiveManagers", verifyUser(["1"]), getAllActiveManagers);
 
-router.post("/getManagerById", getManagerById);
-router.post("/getStudentById", getStudentById);
+router.post("/getManagerById", verifyUser(["1"]), getManagerById);
+router.post("/getStudentById", verifyUser(["1"]), getStudentById);
 
-router.put("/updateStudent", updateStudent);
-router.put("/updateStudentStatus", updateStudentStatus);
-router.put("/updateManager", updateManager);
-router.put("/updateManagerStatus", updateManagerStatus);
+router.put("/updateStudent", verifyUser(["1"]), updateStudent);
+router.put("/updateStudentStatus", verifyUser(["1"]), updateStudentStatus);
+router.put("/updateManager", verifyUser(["1"]), updateManager);
+router.put("/updateManagerStatus", verifyUser(["1"]), updateManagerStatus);
 
-router.get("/getNoOfManagers", getNoOfManagers);
-router.get("/getNoOfStudents", getNoOfStudents);
+router.get("/getNoOfManagers", verifyUser(["1"]), getNoOfManagers);
+router.get("/getNoOfStudents", verifyUser(["1"]), getNoOfStudents);
 
-router.post("/getStudentByDegShort", getStudentByDegShort);
+router.get("/getSummaryData", verifyUser(["1"]), getSummaryData);
+
+router.post("/getStudentByDegShort", verifyUser(["1"]), getStudentByDegShort);
 
 export default router;

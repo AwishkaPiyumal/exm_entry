@@ -11,19 +11,18 @@ const transporter = nodemailer.createTransport({
   },
 });
 
-const mailer = async (receiver, user_name, password) => {
+const mailer = async (receiver, subject, htmlContent) => {
   try {
     const info = await transporter.sendMail({
       from: `"Examination Branch" <${process.env.EMAIL}>`,
       to: receiver,
-      subject: "Registration succesfull",
-      html: `<h2>You are successfully registered for to examinations</h2>
-              <h4>User name : ${user_name}</h4>
-              <h4>User name : ${password}</h4>`,
+      subject,
+      html: htmlContent,
     });
     console.log("Message sent: %s", info.messageId);
   } catch (error) {
-    return error;
+    console.error("Error sending email:", error);
+    throw new Error("Failed to send email.");
   }
 };
 

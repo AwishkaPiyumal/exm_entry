@@ -1,66 +1,16 @@
 "use client";
 
 import { toast } from "sonner";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { GiCancel } from "react-icons/gi";
-
 import {
-  getAllFaculties,
-  getDegreeById,
-  getDegreesByDepartmentId,
-  getDepartmentsByFacultyId,
-} from "@/utils/apiRequests/course.api";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
-  createCurriculum,
-  getCurriculumByDegLevSem,
-  getCurriculumById,
-  updateCurriculum,
-} from "@/utils/apiRequests/curriculum.api";
-import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from "@/components/ui/accordion";
-
-import StudentSelection from "./StudentSelection";
-import { getAllActiveManagers } from "@/utils/apiRequests/user.api";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
-import { Check, ChevronsUpDown } from "lucide-react";
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-} from "@/components/ui/command";
-import { cn } from "@/lib/utils";
-import { FaExclamation } from "react-icons/fa";
-import {
-  createBatch,
-  getBatchById,
   getBatchTimePeriod,
   setBatchTimePeriod,
-  updateBatch,
 } from "@/utils/apiRequests/batch.api";
-import { convertDateFormat, convertUTCToLocal } from "@/utils/functions";
+import { convertUTCToLocal } from "@/utils/functions";
 
 const DeadlineModel = ({
   deadlineId,
@@ -77,13 +27,12 @@ const DeadlineModel = ({
     mutationFn: setBatchTimePeriod,
     onSuccess: (res) => {
       queryClient.invalidateQueries(["batches", deadlineId]);
-      toast(res.message);
+      toast.success(res.message);
       setDeadlineId("");
     },
     onError: (err) => {
-      console.log(err);
       setDeadlineId("");
-      toast("Operation failed");
+      toast.error("Operation failed");
     },
   });
 
@@ -94,20 +43,25 @@ const DeadlineModel = ({
   });
 
   useEffect(() => {
-    console.log(data);
     if (data && data.length) {
       let students_end = convertUTCToLocal(
-        data?.filter((obj) => obj.user_type == "5")[0].end_date
+        data?.filter((obj) => obj.user_type == "5")[0]?.end_date
       );
       let lecturers_end = convertUTCToLocal(
-        data?.filter((obj) => obj.user_type == "4")[0].end_date
+        data?.filter((obj) => obj.user_type == "4")[0]?.end_date
       );
-
-      console.log(students_end, lecturers_end);
+      let hod_end = convertUTCToLocal(
+        data?.filter((obj) => obj.user_type == "3")[0]?.end_date
+      );
+      let dean_end = convertUTCToLocal(
+        data?.filter((obj) => obj.user_type == "2")[0]?.end_date
+      );
 
       setFormData({
         students_end,
         lecturers_end,
+        hod_end,
+        dean_end,
       });
     }
   }, [data]);
@@ -119,33 +73,15 @@ const DeadlineModel = ({
     }));
   };
 
-  const onAcadYearChanged = (e) => {
-    let value = +e.target.value;
-    if (value < +e.target.min) {
-      value = +e.target.min;
-    } else if (value > +e.target.max) {
-      value = +e.target.max;
-    }
-
-    setFormData((curData) => ({
-      ...curData,
-      academic_year: value,
-      batch_code: `${value}${specificDegreeData?.short || "XX"}${
-        e.target?.name == "level" ? e.target?.value : formData.level || "X"
-      }${
-        e.target?.name == "sem_no" ? e.target?.value : formData.sem_no || "X"
-      }`,
-    }));
-    e.target.value = value;
-  };
-
   const onFormSubmitted = () => {
-    const { students_end, lecturers_end } = formData;
-    console.log(students_end, lecturers_end);
+    const { students_end, lecturers_end, hod_end, dean_end } = formData;
+
     mutate({
       batch_id: deadlineId,
       students_end,
       lecturers_end,
+      hod_end,
+      dean_end,
     });
 
     setIsDeadlineOpen(false);
@@ -156,7 +92,11 @@ const DeadlineModel = ({
   };
 
   useEffect(() => {
-    let isFormValid = formData.students_end && formData.lecturers_end;
+    let isFormValid =
+      formData.students_end &&
+      formData.lecturers_end &&
+      formData.hod_end &&
+      formData.dean_end;
 
     setBtnEnable(isFormValid);
   }, [formData]);
@@ -213,6 +153,32 @@ const DeadlineModel = ({
                     className="col-span-3"
                     onChange={(e) => onFormDataChanged(e)}
                     value={formData.lecturers_end || ""}
+                  />
+                </div>
+                <div className="grid grid-cols-4 items-center gap-4">
+                  <Label htmlFor="hod_end" className="text-right">
+                    HOD deadline
+                  </Label>
+                  <input
+                    type="datetime-local"
+                    id="hod_end"
+                    name="hod_end"
+                    className="col-span-3"
+                    onChange={(e) => onFormDataChanged(e)}
+                    value={formData.hod_end || ""}
+                  />
+                </div>
+                <div className="grid grid-cols-4 items-center gap-4">
+                  <Label htmlFor="dean_end" className="text-right">
+                    Dean deadline
+                  </Label>
+                  <input
+                    type="datetime-local"
+                    id="dean_end"
+                    name="dean_end"
+                    className="col-span-3"
+                    onChange={(e) => onFormDataChanged(e)}
+                    value={formData.dean_end || ""}
                   />
                 </div>
               </div>

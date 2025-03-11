@@ -54,6 +54,20 @@ const StudentSelection = ({
     enabled: false,
   });
 
+  const onSearched = () => {
+    if (stuData) {
+      let filtData = searchValue
+        ? stuData.filter(
+            (item) =>
+              item.name.toLowerCase().includes(searchValue.toLowerCase()) ||
+              item.user_name.toLowerCase().includes(searchValue.toLowerCase())
+          )
+        : stuData;
+
+      setFilteredStuData(filtData);
+    }
+  };
+
   const columns = [
     {
       id: "select",
@@ -132,11 +146,12 @@ const StudentSelection = ({
     },
   ];
 
-  const onSearchChange = (e) => {
-    setSearchValue(e.target.value);
+  const onClearClicked = () => {
+    setSearchValue("");
+    if (stuData) {
+      setFilteredStuData(stuData);
+    }
   };
-
-  const onClearClicked = () => setSearchValue("");
 
   useEffect(() => {
     if (stuData) {
@@ -150,7 +165,7 @@ const StudentSelection = ({
 
       setFilteredStuData(filtData);
     }
-  }, [searchValue, stuData]);
+  }, [stuData]);
 
   const table = useReactTable({
     data: filteredStuData,
@@ -177,7 +192,6 @@ const StudentSelection = ({
   }, [feedId]);
 
   useEffect(() => {
-    console.log(feedId);
     if (feedId) {
       oldDataRefetch();
     }
@@ -186,21 +200,26 @@ const StudentSelection = ({
   return (
     <div className="w-full h-[60vh] mb-2">
       <div className="flex items-center py-2 px-1 gap-10">
-        <div className="bg-white rounded-md flex relative w-full">
-          <Input
-            placeholder="Search by student id or name"
-            onChange={(e) => onSearchChange(e)}
-            value={searchValue}
-            className="w-full"
-          />
-          <span
-            className={`${
-              searchValue ? "opacity-100 inline-block" : "opacity-0 hidden"
-            } text-sm font-medium text-slate-700 absolute top-2 right-2 transition-all duration-200`}
-            onClick={onClearClicked}
-          >
-            <MdCancel className="size-5 cursor-pointer" />
-          </span>
+        <div className="flex space-x-3 items-center">
+          <div className="bg-white rounded-md flex relative w-full">
+            <Input
+              placeholder="Search by student id or name"
+              onChange={(e) => setSearchValue(e.target.value)}
+              className="w-full"
+              value={searchValue}
+            />
+            <span
+              className={`${
+                searchValue ? "opacity-100 inline-block" : "opacity-0 hidden"
+              } text-sm font-medium text-slate-700 absolute top-2 right-2 transition-all duration-200`}
+              onClick={onClearClicked}
+            >
+              <MdCancel className="size-5 cursor-pointer" />
+            </span>
+          </div>
+          <Button onClick={onSearched} size="sm">
+            Search
+          </Button>
         </div>
 
         <DropdownMenu>

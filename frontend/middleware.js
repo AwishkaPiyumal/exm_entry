@@ -14,7 +14,7 @@ export async function middleware(req) {
   }
 
   // Allow public routes
-  const publicRoutes = ["/"];
+  const publicRoutes = ["/", "/reset-password"];
   if (publicRoutes.some((route) => pathname === route)) {
     return NextResponse.next();
   }
@@ -34,12 +34,62 @@ export async function middleware(req) {
     );
     const { payload: user } = await jwtVerify(token, secretKey);
 
+    if (!user) {
+      return NextResponse.redirect(new URL("/", req.url));
+    }
+
+    //Allow everyone to the Home apge
+    if (pathname == `/home`) {
+      return NextResponse.next();
+    }
+
+    //check if the user is student and he visiting a allowed page
+    const stuAllowedPages = ["home/form"];
+    const isStuAllowedPage = stuAllowedPages.some((page) =>
+      pathname.startsWith(`/${page}`)
+    );
+
+    if (user.role_id === "5") {
+      if (isStuAllowedPage) {
+        return NextResponse.next();
+      } else {
+        return NextResponse.redirect(new URL("/home", req.url));
+      }
+    }
+
+    //check if the user is lecturer and he visiting a allowed page
+    const lecAllowedPages = ["home/subjects"];
+    const isLecAllowedPage = lecAllowedPages.some((page) =>
+      pathname.startsWith(`/${page}`)
+    );
+
+    if (user.role_id === "4") {
+      if (isLecAllowedPage) {
+        return NextResponse.next();
+      } else {
+        return NextResponse.redirect(new URL("/home", req.url));
+      }
+    }
+
+    //check if the user is lecturer and he visiting a allowed page
+    const deanHodAllowedPages = ["home/batches", "report"];
+    const isdeanHodAllowedPage = deanHodAllowedPages.some((page) =>
+      pathname.startsWith(`/${page}`)
+    );
+
+    if (user.role_id === "2" || user.role_id === "3") {
+      if (isdeanHodAllowedPage) {
+        return NextResponse.next();
+      } else {
+        return NextResponse.redirect(new URL("/home", req.url));
+      }
+    }
+
     // Check if the user has access to certain pages
     const restrictedPages = ["examinations", "courses", "entries", "users"];
     const isRestrictedPage = restrictedPages.some((page) =>
       pathname.startsWith(`/${page}`)
     );
-
     if (isRestrictedPage && user.role_id !== "1") {
       // Only allow admins (role_id 1)
       return NextResponse.redirect(new URL("/home", req.url));

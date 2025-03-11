@@ -1,10 +1,19 @@
 "use client";
-import React, { useEffect, useState } from "react";
+import dynamic from "next/dynamic";
+
+const RichTextEditor = dynamic(() => import("./RichTextEditor"), {
+  ssr: false,
+});
+
+import React, { useEffect, useRef, useState } from "react";
 import UoV_Logo from "./../images/UoV_Logo.png";
 import Image from "next/image";
 import { useQuery } from "@tanstack/react-query";
-import { getBatchFullDetails } from "@/utils/apiRequests/batch.api";
-import { numberToOrdinalWord, parseString } from "@/utils/functions";
+import {
+  getModifiedDate,
+  numberToOrdinalWord,
+  parseString,
+} from "@/utils/functions";
 import {
   Select,
   SelectContent,
@@ -14,6 +23,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Calendar } from "@/components/ui/calendar";
+import { cn } from "@/lib/utils";
+import { CiCalendar as CalendarIcon } from "react-icons/ci";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { FaTimes } from "react-icons/fa";
 import { FaPlus } from "react-icons/fa6";
 import { Button } from "./ui/button";
@@ -23,57 +40,19 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { getCurriculumBybatchId } from "@/utils/apiRequests/curriculum.api";
 
-function getCurrentDate() {
-  const today = new Date();
-  const day = String(today.getDate()).padStart(2, "0");
-  const month = String(today.getMonth() + 1).padStart(2, "0"); // Months are 0-indexed
-  const year = today.getFullYear();
-
-  return `${day}.${month}.${year}`;
-}
-
-function createSubjectObject(subjects) {
-  const subjectMap = {};
-
-  subjects?.forEach((subject) => {
-    subjectMap[subject.sub_id] = subject;
-  });
-
-  return subjectMap;
-}
-
-const AdmissionCardTemplate = ({ batch_id }) => {
-  const [formData, setFormData] = useState({
-    generated_date: getCurrentDate(),
-    subjects: [],
-    date: [{ year: new Date().getFullYear(), months: [new Date().getMonth()] }],
-  });
-  const [level_ordinal, setLevel_ordinal] = useState("");
-  const [sem_ordinal, setSem_ordinal] = useState("");
-  const [decodeBatchCode, setDecodeBatchCode] = useState({});
-  const [subjectObject, setSubjectObject] = useState({});
-
-  const {
-    data: batchFullDetailsData,
-    isLoading,
-    error,
-  } = useQuery({
-    queryFn: () => getBatchFullDetails(batch_id),
-    queryKey: ["batchFullDetails"],
-  });
-
-  const { data: batchCurriculumData } = useQuery({
-    queryFn: () => getCurriculumBybatchId(batch_id),
-    queryKey: ["batchCurriculums"],
-  });
-
-  const studentDetails = {};
-  const subjects = [];
-  const subjectsDetails = {};
-  const issueDate = "";
-
+const AdmissionCardTemplate = ({
+  batch_id,
+  setFormData,
+  formData,
+  batchFullDetailsData,
+  latestAdmissionTemplateData,
+  batchCurriculumData,
+  level_ordinal,
+  sem_ordinal,
+  decodeBatchCode,
+  subjectObject,
+}) => {
   const handleMonthChange = (month, yearIndex, monthIndex) => {
     setFormData((cur) => {
       const updatedDates = [...cur.date];
@@ -154,63 +133,77 @@ const AdmissionCardTemplate = ({ batch_id }) => {
   };
 
   useEffect(() => {
-    if (batchFullDetailsData) {
-      setDecodeBatchCode(parseString(batchFullDetailsData.batch_code));
+    if (latestAdmissionTemplateData) {
+      let obj = {};
+      if (latestAdmissionTemplateData.exist) {
+        obj.generated_date = latestAdmissionTemplateData?.data?.generated_date;
+        obj.description = latestAdmissionTemplateData?.data?.description;
+        obj.instructions = latestAdmissionTemplateData?.data?.instructions;
+        obj.provider = latestAdmissionTemplateData?.data?.provider;
+
+        const transformedSubjects =
+          latestAdmissionTemplateData?.data?.subject_list
+            ?.split(",")
+            .map((comSubs) => comSubs.split(":"));
+        const transformedDate = latestAdmissionTemplateData?.data?.exam_date
+          ?.split(",")
+          .map((item) => {
+            const [year, months] = item.split(":");
+            return {
+              year: parseInt(year),
+              months: months.split(";").map((mon) => +mon),
+            };
+          });
+
+        obj.subjects = transformedSubjects;
+        obj.date = transformedDate;
+      } else {
+        obj.description = latestAdmissionTemplateData?.data?.description;
+        obj.instructions = latestAdmissionTemplateData?.data?.instructions;
+        obj.provider = latestAdmissionTemplateData?.data?.provider;
+      }
+
+      setFormData((cur) => ({
+        ...cur,
+        ...obj,
+      }));
     }
-  }, [batchFullDetailsData]);
-
-  useEffect(() => {
-    if (decodeBatchCode) {
-      setLevel_ordinal(numberToOrdinalWord(decodeBatchCode.level));
-      setSem_ordinal(numberToOrdinalWord(decodeBatchCode.sem_no));
-    }
-  }, [decodeBatchCode]);
-
-  useEffect(() => {
-    console.log(formData);
-  }, [formData]);
-
-  useEffect(() => {
-    console.log(batchCurriculumData);
-    setSubjectObject(createSubjectObject(batchCurriculumData));
-  }, [batchCurriculumData]);
+  }, [latestAdmissionTemplateData]);
 
   return (
-    <div className="border-2 border-black p-8 max-w-4xl mx-auto font-serif bg-white">
-      <div className="text-center mb-4">
+    <div className="border-2 border-black p-8 max-w-4xl mx-auto font-times bg-white">
+      <div className="text-center mb-4 ">
         <Image
           src={UoV_Logo}
           alt="UOV logo"
           height={100}
           width={100}
-          className="mx-auto"
+          className="mx-auto mb-2"
         />
-        <h1 className="font-bold text-lg uppercase underline">
+        <h1 className="font-bold text-lg uppercase leading-[1]">
           University of Vavuniya
         </h1>
-        <h2 className="text-md uppercase text-xl font-extrabold">
-          Faculty of Applied Science
+        <h2 className="uppercase text-xl font-extrabold leading-[1]">
+          faculty of {batchFullDetailsData?.f_name}
         </h2>
-        <h3 className="font-bold text-lg mt-2 uppercase">
-          {level_ordinal} examination in {batchFullDetailsData?.deg_name} -
-          {decodeBatchCode.academic_year} - <br />
-        </h3>
-        <div className="flex justify-center font-bold text-lg uppercase space-x-2 items-center flex-wrap">
-          {sem_ordinal}
-          &nbsp;semester -&nbsp;{" "}
-          {formData.date.map((yearBlock, yearIndex) => (
+
+        <div className="flex justify-center font-semibold text-base uppercase space-x-2 items-center flex-wrap  leading-[1]">
+          {level_ordinal} examination in {batchFullDetailsData?.deg_name} -{" "}
+          {decodeBatchCode.academic_year} - {sem_ordinal}
+          &nbsp;semester -
+          {formData.date?.map((yearBlock, yearIndex) => (
             <React.Fragment key={yearIndex}>
               <span>
-                {formData.date.length > 1 && (yearIndex || "") && ","}
+                {formData.date?.length > 1 && (yearIndex || "") && ","}
               </span>
               <div key={yearIndex} className="flex space-x-3">
                 <div className="flex items-center space-x-2">
-                  {yearBlock.months.map((month, monthIndex) => (
+                  {yearBlock.months?.map((month, monthIndex) => (
                     <div
                       key={monthIndex}
                       className="flex items-center space-x-1"
                     >
-                      {yearBlock.months.length > 1 && (monthIndex || "") && (
+                      {yearBlock.months?.length > 1 && (monthIndex || "") && (
                         <span> &#47;</span>
                       )}
                       <Select
@@ -321,42 +314,41 @@ const AdmissionCardTemplate = ({ batch_id }) => {
             </Tooltip>
           </TooltipProvider>
         </div>
-        <h3 className="font-bold text-lg mt-1">Admission Card</h3>
+        <h3 className="text-xl uppercase font-bold leading-[1.1]">
+          Admission Card
+        </h3>
       </div>
 
-      <div className="grid grid-cols-2 gap-0 mb-2">
+      <div className="flex justify-between mb-2 text-sm">
         <p>
-          <span className="font-bold w-24 inline-block">Name</span> :-&nbsp;
-          {studentDetails.name || "____"}
+          <span className="font-bold inline-block">Name</span> :&nbsp; ____
         </p>
         <p>
-          <span className="font-bold w-24 inline-block">Reg. No</span> :-&nbsp;
-          {studentDetails.regNo || "____"}
+          <span className="font-bold inline-block">Reg. No</span> :&nbsp; ____
         </p>
         <p>
-          <span className="font-bold w-24 inline-block">Index No</span> :-&nbsp;
-          {studentDetails.indexNo || "____"}
+          <span className="font-bold inline-block">Index No</span> :&nbsp; ____
+        </p>
+        <p>
+          <span className="font-bold inline-block">Category</span> :&nbsp; ____
         </p>
       </div>
 
-      <p className=" mb-2">
-        Candidates are expected to produce this admission card to the
-        Supervisor/Invigilator/Examiner at the Examination Hall. This form
-        should be filled and signed by the candidates in the presence of the
-        Supervisor/Invigilator/Examiner every time a paper test is taken. The
-        Supervisor/Invigilator/Examiner is expected to authenticate the
-        signature of the candidate by placing his/her initials in the
-        appropriate column. Students are requested to hand over the admission
-        card to the Supervisor on the last day of the paper.
-      </p>
+      <RichTextEditor
+        setFormData={setFormData}
+        text={formData.description}
+        element="description"
+        height="110px"
+        width="100%"
+      />
 
       <table className="w-full border-collapse border border-black text-sm mb-2">
         <thead>
           <tr>
-            <th className="border border-black px-2 py-1">S.No</th>
-            <th className="border border-black px-2 py-1">Unit Code</th>
+            <th className="border border-black px-2 py-1">No.</th>
+            <th className="border border-black px-2 py-1">Subject Code</th>
             <th className="border border-black px-2 py-1">Subject</th>
-            <th className="border border-black px-2 py-1">Eligibility</th>
+            <th className="border border-black px-2 py-1">Eligible</th>
             <th className="border border-black px-2 py-1">Date</th>
             <th className="border border-black px-2 py-1">
               Candidate’s Signature
@@ -367,62 +359,39 @@ const AdmissionCardTemplate = ({ batch_id }) => {
           </tr>
         </thead>
         <tbody>
-          {/* {Object.keys(subjects).length
-            ? subjects.map((subject, index) => (
-                <tr key={index}>
-                  <td className="border border-black px-2 py-1 text-center">
-                    {index + 1}
-                  </td>
-                  <td className="border border-black px-2 py-1">
-                    {subject.sub_id}
-                  </td>
-                  <td className="border border-black px-2 py-1">
-                    {subject.subject}
-                  </td>
-                  <td className="border border-black px-2 py-1 text-center">
-                    {subject.eligibility}
-                  </td>
-                  <td className="border border-black px-2 py-1 text-center">
-                    {subject.date || "____"}
-                  </td>
-                  <td className="border border-black px-2 py-1">&nbsp;</td>
-                  <td className="border border-black px-2 py-1">&nbsp;</td>
-                </tr>
-              ))
-            :*/}
-          {formData.subjects.map((arr, index) =>
+          {formData.subjects?.map((arr, index) =>
             arr.map((sub_id, ind) => (
               <tr key={index + ":" + ind}>
-                <td className="border border-black px-2 py-1 text-center">
+                <td className="border border-black px-2 py-1 text-center leading-[0.9]">
                   {ind ? "" : index + 1}
                 </td>
-                <td className="border border-black px-2 py-1">
+                <td className="border border-black px-2 py-1 leading-[0.9]">
                   {subjectObject[sub_id]?.sub_code}
                 </td>
-                <td className="border border-black px-2 py-1 relative">
+                <td className="border border-black px-2 py-1 relative leading-[0.9]">
                   {subjectObject[sub_id]?.sub_name}
-                  {formData.subjects.length - 1 == index &&
-                  formData.subjects[index].length - 1 == ind ? (
+                  {formData.subjects?.length - 1 == index &&
+                  formData.subjects?.[index].length - 1 == ind ? (
                     <Button
                       variant="outline"
                       className="absolute right-2 top-1/2 -translate-y-1/2 text-red-500 text-xs rounded-full size-6 p-0"
                       size="sm"
                       onClick={() =>
                         setFormData((cur) => {
-                          const updatedSubjects = [...cur.subjects]; // Create a shallow copy of the outer array
+                          const updatedSubjects = [...cur.subjects];
                           if (updatedSubjects.length > 0) {
                             const lastSubjectArray = [
                               ...updatedSubjects[updatedSubjects.length - 1],
-                            ]; // Create a shallow copy of the last nested array
+                            ];
                             if (lastSubjectArray.length > 1) {
-                              lastSubjectArray.pop(); // Remove the last element of the copied nested array
+                              lastSubjectArray.pop();
                               updatedSubjects[updatedSubjects.length - 1] =
-                                lastSubjectArray; // Replace the original nested array with the updated one
+                                lastSubjectArray;
                             } else {
-                              updatedSubjects.pop(); // Remove the last array if it has only one element
+                              updatedSubjects.pop();
                             }
                           }
-                          return { ...cur, subjects: updatedSubjects }; // Return a new state object
+                          return { ...cur, subjects: updatedSubjects };
                         })
                       }
                     >
@@ -439,8 +408,8 @@ const AdmissionCardTemplate = ({ batch_id }) => {
               </tr>
             ))
           )}
-          {formData.subjects.flat().length &&
-          formData.subjects.flat().length != batchCurriculumData?.length ? (
+          {formData.subjects?.flat().length &&
+          formData.subjects?.flat().length != batchCurriculumData?.length ? (
             <tr>
               <td></td>
               <td></td>
@@ -462,17 +431,22 @@ const AdmissionCardTemplate = ({ batch_id }) => {
                   }
                   value="0"
                 >
-                  <SelectTrigger className="w-40 h-8">
+                  <SelectTrigger className="w-40 h-8 border border-black">
                     <SelectValue placeholder="+ Combined Unit" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectGroup>
-                      <SelectLabel>Combined Unit</SelectLabel>
+                      <SelectLabel>Combined Units</SelectLabel>
                       <SelectItem className="hidden" value="0">
                         + Combined Unit
                       </SelectItem>
                       {batchCurriculumData?.map((obj) => {
-                        if (!formData.subjects.flat().includes(obj.sub_id)) {
+                        if (
+                          !formData.subjects
+                            .flat()
+                            .map((item) => +item)
+                            .includes(+obj.sub_id)
+                        ) {
                           return (
                             <SelectItem key={obj.sub_id} value={obj.sub_id}>
                               {obj.sub_code + " " + obj.sub_name}
@@ -494,7 +468,7 @@ const AdmissionCardTemplate = ({ batch_id }) => {
           )}
         </tbody>
       </table>
-      {formData.subjects.flat().length != batchCurriculumData?.length ? (
+      {formData.subjects?.flat().length != batchCurriculumData?.length ? (
         <Select
           onValueChange={(sub_id) =>
             setFormData((cur) => ({
@@ -504,17 +478,22 @@ const AdmissionCardTemplate = ({ batch_id }) => {
           }
           value="0"
         >
-          <SelectTrigger className="w-32 h-8">
+          <SelectTrigger className="w-32 h-8 border border-black">
             <SelectValue placeholder="+ Unit" />
           </SelectTrigger>
           <SelectContent>
             <SelectGroup>
-              <SelectLabel>Unit</SelectLabel>
+              <SelectLabel>Units</SelectLabel>
               <SelectItem className="hidden" value="0">
                 + Unit
               </SelectItem>
               {batchCurriculumData?.map((obj) => {
-                if (!formData.subjects.flat().includes(obj.sub_id)) {
+                if (
+                  !formData.subjects
+                    .flat()
+                    .map((item) => +item)
+                    .includes(+obj.sub_id)
+                ) {
                   return (
                     <SelectItem key={obj.sub_id} value={obj.sub_id}>
                       {obj.sub_code + " " + obj.sub_name}
@@ -531,37 +510,53 @@ const AdmissionCardTemplate = ({ batch_id }) => {
 
       {/* Footer Instructions */}
       <div className="text-sm mb-8 mt-2">
-        <p className="font-bold underline">Instructions</p>
-        <p>
-          01. No candidate shall be admitted to the Examination hall without
-          this card.
-        </p>
-        <p>
-          02. If any candidate loses this admission card, he/she shall obtain a
-          duplicate Admission Card on payment of Rs.150/-
-        </p>
-        <p>
-          03. Every candidate shall produce his/her Identity Card at every
-          paper/Practical Examination he/she sits for.
-        </p>
-        <p>
-          04. Any unauthorized documents, notes & bags should not be taken into
-          the Examinations.
-        </p>
-        <p>
-          05. When unable to be present for any part of the Examination, it
-          should be notified to me{" "}
-          <span className="font-bold underline">immediately in writing</span> .
-          No appeals will be considered later without this timely notification.
-        </p>
+        <RichTextEditor
+          setFormData={setFormData}
+          text={formData.instructions}
+          element="instructions"
+          height="160px"
+          width="100%"
+        />
       </div>
 
       {/* Footer */}
       <div className="flex justify-end">
         <div className="text-left">
-          <p className="text-sm">Senior Asst. Registrar</p>
-          <p className="text-sm">Examination & Student Admission</p>
-          <p className="text-sm">{issueDate || getCurrentDate()}</p>
+          <RichTextEditor
+            setFormData={setFormData}
+            text={formData.provider}
+            element="provider"
+            height="100px"
+            width="380px"
+          />
+
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button
+                variant={"outline"}
+                className={cn(
+                  "w-[200px] justify-between text-left font-normal",
+                  !formData.generated_date && "text-muted-foreground"
+                )}
+              >
+                {formData.generated_date || <span>Pick a date</span>}{" "}
+                <CalendarIcon className="mr-2 h-4 w-4" />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-auto p-0">
+              <Calendar
+                mode="single"
+                selected={formData.generated_date}
+                onSelect={(e) =>
+                  setFormData((cur) => ({
+                    ...cur,
+                    generated_date: getModifiedDate(e),
+                  }))
+                }
+                initialFocus
+              />
+            </PopoverContent>
+          </Popover>
         </div>
       </div>
     </div>

@@ -43,12 +43,11 @@ const ManagerDetails = () => {
     onSuccess: (res) => {
       queryClient.invalidateQueries(["managers"]);
       setEditId("");
-      toast(res.message);
+      toast.success(res.message);
     },
     onError: (err) => {
-      console.log(err);
       setEditId("");
-      toast("Operation failed");
+      toast.error("Operation failed");
     },
   });
 
@@ -60,8 +59,11 @@ const ManagerDetails = () => {
 
   const columns = [
     {
-      accessorKey: "user_name",
-      header: "User name",
+      id: "user_name",
+      header: "Email",
+      cell: ({ row }) => {
+        return <p className="lowercase">{row.original.user_name}</p>;
+      },
     },
     {
       accessorKey: "name",

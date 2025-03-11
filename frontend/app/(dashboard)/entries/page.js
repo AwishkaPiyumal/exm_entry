@@ -11,13 +11,28 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { getActiveFacultiesWithDepartmentsCount } from "@/utils/apiRequests/course.api";
+import { Skeleton } from "@/components/ui/skeleton";
 
 const entries = () => {
   const pathname = usePathname();
-  const { data: noOfDepartmentsWithFacultyData } = useQuery({
+  const {
+    data: noOfDepartmentsWithFacultyData,
+    isLoading: isNoOfDepartmentsWithFacultyDataLoading,
+  } = useQuery({
     queryFn: getActiveFacultiesWithDepartmentsCount,
     queryKey: ["noOfDepartmentsWithFaculty"],
   });
+
+  if (isNoOfDepartmentsWithFacultyDataLoading)
+    return (
+      <div className="flex justify-end md:justify-center">
+        <div className="md:w-[70%] flex gap-6 flex-wrap">
+          {[1, 2, 3, 4, 5, 6].map((_, i) => (
+            <Skeleton key={i} className="w-[30%] h-32 max-w-[30%] rounded-xl" />
+          ))}
+        </div>
+      </div>
+    );
 
   return (
     <div className="flex justify-end md:justify-center">

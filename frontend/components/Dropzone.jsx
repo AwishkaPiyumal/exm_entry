@@ -14,7 +14,7 @@ const Dropzone = ({ file, setFile }) => {
 
     // Check for rejected files or multiple files
     if (rejectedFiles.length > 0) {
-      setError("Invalid file type. Only CSV and Excel are allowed.");
+      setError("Invalid file type. Only CSV allowed.");
       return;
     }
     if (acceptedFiles.length > 1) {
@@ -32,10 +32,6 @@ const Dropzone = ({ file, setFile }) => {
     onDrop,
     accept: {
       "text/csv": [".csv"],
-      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": [
-        ".xlsx",
-      ],
-      "application/vnd.ms-excel": [".xls"],
     },
     maxFiles: 1,
   });
@@ -67,18 +63,14 @@ const Dropzone = ({ file, setFile }) => {
               } text-6xl mx-auto mb-3`}
             />
             <p className="dropzone-content text-center">
-              Drag &amp; drop a CSV or Excel file here, or click to select a
-              file
+              Drag &amp; drop a CSV file here, or click to select a file
             </p>
           </>
         )}
         {file && (
           <div className="text-center">
-            {fileType == "text/csv" ? (
-              <FaFileCsv className="text-5xl mx-auto mb-4" />
-            ) : (
-              <FaFileExcel className="text-5xl mx-auto mb-4" />
-            )}
+            <FaFileCsv className="text-5xl mx-auto mb-4" />
+
             <p className="text-sm font-semibold text-gray-800">{file.name}</p>
             <button
               className="mt-2 bg-red-500 hover:bg-red-600 text-white font-semibold py-1 px-4 rounded-lg flex items-center gap-2 mx-auto"

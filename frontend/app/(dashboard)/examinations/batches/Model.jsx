@@ -70,13 +70,12 @@ const Model = ({ editId, isOpen, setIsOpen, modalRef, setEditId }) => {
     mutationFn: editId ? updateBatch : createBatch,
     onSuccess: (res) => {
       queryClient.invalidateQueries(["batches"]);
-      toast(res.message);
+      toast.success(res.message);
       setEditId("");
     },
     onError: (err) => {
-      console.log(err);
       setEditId("");
-      toast("Operation failed");
+      toast.error("Operation failed");
     },
   });
 
@@ -211,6 +210,7 @@ const Model = ({ editId, isOpen, setIsOpen, modalRef, setEditId }) => {
         old_subjects,
         old_status,
         batch_id,
+        deg_id,
       } = formData;
       mutate({
         batch_code,
@@ -220,10 +220,11 @@ const Model = ({ editId, isOpen, setIsOpen, modalRef, setEditId }) => {
         old_subjects,
         old_status,
         batch_id,
+        deg_id,
       });
     } else {
-      const { batch_code, subjects, status } = formData;
-      mutate({ batch_code, subjects, status });
+      const { batch_code, subjects, status, deg_id } = formData;
+      mutate({ batch_code, subjects, status, deg_id });
     }
 
     setFormData({});

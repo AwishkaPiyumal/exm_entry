@@ -83,6 +83,14 @@ export const getStudentApplicationDetails = async () => {
   return response.data;
 };
 
+export const checkSubjectExist = async (data) => {
+  const response = await axiosInstance.post(
+    "/curriculum/checkSubjectExist",
+    data
+  );
+  return response.data;
+};
+
 export const getAllSubjectsForManager = async () => {
   const response = await axiosInstance.get(
     "/curriculum/getAllSubjectsForManager"
@@ -90,10 +98,16 @@ export const getAllSubjectsForManager = async () => {
   return response.data;
 };
 
-export const getAppliedStudentsForSubject = async (batch_id, sub_id) => {
-  const response = await axiosInstance.post(
-    "/curriculum/getAppliedStudentsForSubject",
-    { batch_id, sub_id }
+export const getAllSubjectsForDepartment = async () => {
+  const response = await axiosInstance.get(
+    "/curriculum/getAllSubjectsForDepartment"
+  );
+  return response.data;
+};
+
+export const getAllSubjectsForFaculty = async () => {
+  const response = await axiosInstance.get(
+    "/curriculum/getAllSubjectsForFaculty"
   );
   return response.data;
 };
@@ -101,6 +115,14 @@ export const getAppliedStudentsForSubject = async (batch_id, sub_id) => {
 export const updateEligibility = async (data) => {
   const response = await axiosInstance.put(
     "/curriculum/updateEligibility",
+    data
+  );
+  return response.data;
+};
+
+export const updateMultipleEligibility = async (data) => {
+  const response = await axiosInstance.put(
+    "/curriculum/updateMultipleEligibility",
     data
   );
   return response.data;

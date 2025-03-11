@@ -1,7 +1,10 @@
 import axios from "axios";
 
+const server = process.env.NEXT_PUBLIC_BACKEND_SERVER||"localhost";
+const port = process.env.NEXT_PUBLIC_BACKEND_PORT||"8080";
+
 const axiosInstance = axios.create({
-  baseURL: "http://localhost:8080/api1",
+  baseURL: `http://${server}:${port}/api1`,
   headers: {
     "Content-Type": "application/json",
   },

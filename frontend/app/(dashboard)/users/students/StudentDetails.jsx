@@ -47,12 +47,11 @@ const StudentDetails = () => {
     onSuccess: (res) => {
       queryClient.invalidateQueries(["students"]);
       setEditId("");
-      toast(res.message);
+      toast.success(res.message);
     },
     onError: (err) => {
-      console.log(err);
       setEditId("");
-      toast("Operation failed");
+      toast.error("Operation failed");
     },
   });
 

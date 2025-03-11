@@ -65,3 +65,8 @@ export const getNoOfStudents = async () => {
   const response = await axiosInstance.get("/user/getNoOfStudents");
   return response.data;
 };
+
+export const getSummaryData = async () => {
+  const response = await axiosInstance.get("/user/getSummaryData");
+  return response.data;
+};

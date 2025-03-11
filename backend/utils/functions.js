@@ -53,3 +53,48 @@ export function shallowCompare(obj1, obj2) {
   }
   return true;
 }
+
+export const fetchEmailsForUserType = async (conn, batchId, userType) => {
+  try {
+    let query;
+    let values;
+
+    if (userType === "4") {
+      query = `SELECT u.email, btp.end_date, btp.id FROM batch_curriculum_lecturer bcl
+               JOIN manager m ON bcl.m_id = m.m_id
+               JOIN user u ON m.user_id = u.user_id
+               JOIN batch_time_periods btp ON btp.batch_id = bcl.batch_id
+               WHERE bcl.batch_id = ? AND btp.user_type = ?`;
+      values = [batchId, userType];
+    } else if (userType === "3") {
+      query = `SELECT u.email, btp.end_date, btp.id FROM batch b
+               JOIN dep_deg dd ON b.deg_id = dd.deg_id
+               JOIN department d ON dd.d_id = d.d_id
+               JOIN user u ON d.user_id = u.user_id
+                JOIN batch_time_periods btp ON btp.batch_id = b.batch_id
+               WHERE b.batch_id = ? AND btp.user_type = ?`;
+      values = [batchId, userType];
+    } else if (userType === "2") {
+      query = `SELECT u.email, btp.end_date, btp.id FROM batch b
+               JOIN dep_deg dd ON b.deg_id = dd.deg_id
+               JOIN fac_dep fd ON dd.d_id = fd.d_id
+               JOIN faculty f ON fd.f_id = f.f_id
+               JOIN user u ON f.user_id = u.user_id
+                JOIN batch_time_periods btp ON btp.batch_id = b.batch_id
+               WHERE b.batch_id = ? AND btp.user_type = ?`;
+      values = [batchId, userType];
+    } else {
+      return [];
+    }
+
+    const [rows] = await conn.execute(query, values);
+    return rows.map((row) => ({
+      email: row.email,
+      id: row.id,
+      endDate: row.end_date,
+    }));
+  } catch (error) {
+    console.error("Error fetching emails:", error);
+    return [];
+  }
+};

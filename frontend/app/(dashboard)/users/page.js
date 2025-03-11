@@ -7,6 +7,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { getNoOfManagers, getNoOfStudents } from "@/utils/apiRequests/user.api";
 
 import { useQuery } from "@tanstack/react-query";
@@ -15,15 +16,28 @@ import { usePathname } from "next/navigation";
 
 const users = () => {
   const pathname = usePathname();
-  const { data: noOfManagersData } = useQuery({
-    queryFn: getNoOfManagers,
-    queryKey: ["noOfManagers"],
-  });
+  const { data: noOfManagersData, isLoading: isNoOfManagersDataLoading } =
+    useQuery({
+      queryFn: getNoOfManagers,
+      queryKey: ["noOfManagers"],
+    });
 
-  const { data: noOfStudentsData } = useQuery({
-    queryFn: getNoOfStudents,
-    queryKey: ["noOfStudents"],
-  });
+  const { data: noOfStudentsData, isLoading: isNoOfStudentsDataLoading } =
+    useQuery({
+      queryFn: getNoOfStudents,
+      queryKey: ["noOfStudents"],
+    });
+
+  if (isNoOfManagersDataLoading || isNoOfStudentsDataLoading)
+    return (
+      <div className="flex justify-end md:justify-center">
+        <div className="md:w-[70%] flex gap-6 flex-wrap">
+          {[1, 2].map((_, i) => (
+            <Skeleton key={i} className="w-[30%] h-32 max-w-[30%] rounded-xl" />
+          ))}
+        </div>
+      </div>
+    );
 
   return (
     <div className="flex justify-end md:justify-center">

@@ -40,11 +40,10 @@ const Form = (request) => {
     mutationFn: applyExam,
     onSuccess: (res) => {
       queryClient.invalidateQueries(["batchesOfStudent"]);
-      toast(res.message);
+      toast.success(res.message);
     },
     onError: (err) => {
-      console.log(err);
-      toast("Operation failed");
+      toast.error("Operation failed");
     },
   });
 
@@ -53,7 +52,9 @@ const Form = (request) => {
     router.push("/home");
   };
 
-  if (error) return router.push("/home");
+  useEffect(() => {
+    if (error) router.push("/home");
+  }, [error]);
 
   return (
     <>
@@ -67,7 +68,7 @@ const Form = (request) => {
               <h1>{examName}</h1>
               <h1>{semNo}</h1>
             </div>
-            <div className="mt-12 flex justify-between text-sm font-semibold w-full px-2">
+            <div className="mt-12 flex flex-col sm:flex-row justify-between text-sm font-semibold w-full px-2">
               <p>
                 <span className="uppercase w-20 inline-block">Reg No</span>
                 <span className="uppercase p-2 ">
@@ -83,7 +84,7 @@ const Form = (request) => {
                 </p>
               )}
             </div>
-            <div className="mt-3 flex  text-sm font-semibold  px-2">
+            <div className="mt-0 sm:mt-3 flex  text-sm font-semibold  px-2">
               <p>
                 <span className="uppercase w-20 inline-block">Name</span>
                 <span className="uppercase p-2 ">{applicationData?.name}</span>
@@ -94,15 +95,16 @@ const Form = (request) => {
                 applicationData?.subjects?.map((obj, ind) => (
                   <div
                     key={ind}
-                    className="flex px-3 py-4 bg-white rounded-lg justify-between w-full"
+                    className="flex flex-col sm:flex-row px-3 py-4 bg-white rounded-lg justify-between items-center w-full"
                   >
-                    <h1 className="uppercase w-1/6 shrink-0">{obj.sub_code}</h1>
-                    <h1 className="capitalize w-4/6 shrink-0">
+                    <h1 className="uppercase w-full sm:w-1/6 shrink-0  text-center">
+                      {obj.sub_code}
+                    </h1>
+                    <h1 className="capitalize w-full sm:w-4/6 shrink-0  text-center">
                       {obj.sub_name}
                     </h1>
-                    <h1 className="capitalize w-1/6 shrink-0 text-center">
-                      {+obj.attendance.slice(0, obj.attendance.length - 1) >=
-                      80 ? (
+                    <h1 className="capitalize w-full sm:w-1/6 shrink-0 text-center">
+                      {+obj.attendance >= 80 ? (
                         <Badge variant="success" className="capitalize">
                           eligible
                         </Badge>
@@ -116,7 +118,9 @@ const Form = (request) => {
                 ))}
             </div>
             <div className="flex justify-end">
-              <Button onClick={onSubmit}>Submit</Button>
+              {Object.keys(applicationData).length && (
+                <Button onClick={onSubmit}>Submit</Button>
+              )}
             </div>
           </div>
         </div>
