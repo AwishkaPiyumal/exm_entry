@@ -9,10 +9,10 @@ import {
   getNoOfManagers,
   getNoOfStudents,
   getAllActiveManagers,
-  getStudentByDegShort,
   updateStudentStatus,
   updateManagerStatus,
   getSummaryData,
+  getFacStudentByBatchId,
 } from "../controllers/user.controller.js";
 import { verifyUser } from "../utils/verifyUsers.js";
 
@@ -36,6 +36,10 @@ router.get("/getNoOfStudents", verifyUser(["1"]), getNoOfStudents);
 
 router.get("/getSummaryData", verifyUser(["1"]), getSummaryData);
 
-router.post("/getStudentByDegShort", verifyUser(["1"]), getStudentByDegShort);
+router.post(
+  "/getFacStudentByBatchId",
+  verifyUser(["1"]),
+  getFacStudentByBatchId
+);
 
 export default router;

@@ -12,6 +12,7 @@ import { useRouter } from "next/navigation";
 import { login } from "@/utils/apiRequests/auth.api";
 import { useMutation } from "@tanstack/react-query";
 import { FaEye, FaEyeSlash } from "react-icons/fa6";
+import Footer from "@/components/Footer";
 
 const Login = () => {
   const [formData, setFormData] = useState({
@@ -26,11 +27,14 @@ const Login = () => {
     mutationFn: login,
     onSuccess: (res) => {
       toast.success(res.message);
+      setFormData((cur) => ({
+        remember_me: true,
+      }));
       router.replace("/home");
     },
     onError: (err) => {
       toast.error("Invalid username or password");
-      router.replace("/");
+      setFormData((cur) => ({ ...cur, password: "" }));
     },
   });
 
@@ -52,7 +56,6 @@ const Login = () => {
       console.log(err);
       console.log(err.response?.data?.message || "Login failed");
     }
-    setFormData((cur) => ({ ...cur, password: "" }));
   };
 
   useEffect(() => {
@@ -62,26 +65,29 @@ const Login = () => {
 
   return (
     <div
-      className="flex justify-center items-center h-full"
+      className="flex flex-col justify-between h-full"
       onKeyDown={(e) => {
         if (e.key == "Enter") {
           loginBtnRef.current.click();
         }
       }}
     >
-      <div className="bg-white rounded-lg shadow-lg w-[425px] p-6">
+      <div className="bg-white rounded-lg shadow-lg w-[85%] sm:w-[425px] p-6 mt-6 self-center">
         <div className="flex justify-between items-center border-b pb-2 mb-4">
           <h3 className="text-lg font-semibold">Sign in</h3>
         </div>
         <div className="grid gap-4 py-4">
-          <div className="grid grid-cols-4 items-center gap-4">
-            <Label htmlFor="user_name_or_email" className="text-right">
+          <div className="flex flex-col gap-1 sm:grid sm:grid-cols-4 sm:items-center sm:gap-4">
+            <Label
+              htmlFor="user_name_or_email"
+              className="sm:text-right pl-1 sm:pl-0"
+            >
               User name
             </Label>
             <Input
               id="user_name_or_email"
               name="user_name_or_email"
-              className="col-span-3"
+              className="sm:col-span-3"
               onChange={(e) => onFormDataChanged(e)}
               onBlur={(e) => {
                 e.target.value = e.target.value.trim();
@@ -91,11 +97,11 @@ const Login = () => {
               placeholder="Enter your user name or email"
             />
           </div>
-          <div className="grid grid-cols-4 items-center gap-4">
-            <Label htmlFor="password" className="text-right">
+          <div className="flex flex-col gap-1 sm:grid sm:grid-cols-4 sm:items-center sm:gap-4">
+            <Label htmlFor="password" className="sm:text-right pl-1 sm:pl-0">
               Password
             </Label>
-            <div className="col-span-3 relative">
+            <div className="sm:col-span-3 relative">
               <Input
                 id="password"
                 name="password"
@@ -123,9 +129,9 @@ const Login = () => {
             </div>
           </div>
 
-          <div className="grid grid-cols-4 gap-4 mt-4">
-            <Label className="text-right"></Label>
-            <div className="items-top flex space-x-2 col-span-3 justify-between items-center">
+          <div className="grid grid-cols-4 gap-4 mt-0 sm:mt-4">
+            <Label className="text-right hidden sm:inline-block"></Label>
+            <div className="items-top flex flex-col sm:flex-row sm:space-x-2 col-span-3 sm:justify-between sm:items-center gap-4 sm:gap-0">
               <div className=" flex space-x-2  items-center">
                 <Checkbox
                   id="remember_me"
@@ -141,7 +147,7 @@ const Login = () => {
                   </label>
                 </div>
               </div>
-              <div className=" flex space-x-2  items-center">
+              <div className="flex space-x-2  items-center">
                 <Link
                   href="/reset-password"
                   className="text-sm text-blue-700 self-end"
@@ -152,7 +158,7 @@ const Login = () => {
             </div>
           </div>
         </div>
-        <div className="flex justify-end space-x-2 mt-4">
+        <div className="flex justify-end space-x-2 mt-0 sm:mt-4">
           <Button
             type="button"
             ref={loginBtnRef}
@@ -163,6 +169,7 @@ const Login = () => {
           </Button>
         </div>
       </div>
+      <Footer />
     </div>
   );
 };

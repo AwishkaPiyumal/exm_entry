@@ -31,12 +31,12 @@ import ReactDOM from "react-dom";
 import AdmissionCard from "@/components/AdmissionCard";
 import { createRoot } from "react-dom/client";
 
-const Page = () => {
+const AdmissionPage = () => {
   const searchParams = useSearchParams();
   const batch_id = searchParams.get("batch_id");
   const [level_ordinal, setLevel_ordinal] = useState("");
   const [sem_ordinal, setSem_ordinal] = useState("");
-  const [decodeBatchCode, setDecodeBatchCode] = useState({});
+  const [academicYear, setAcademicYear] = useState("");
   const [subjectObject, setSubjectObject] = useState({});
   const [generating, setGenerating] = useState(false);
   const [formData, setFormData] = useState({
@@ -58,97 +58,111 @@ const Page = () => {
       return;
     }
 
-    const margin = 10; // Top and bottom margin in mm
-
-    for (const [type, students] of Object.entries(studentsData)) {
-      if (students.length === 0) continue;
-
-      const pdf = new jsPDF("p", "mm", "a4");
+    try {
       setGenerating(true);
 
-      for (let i = 0; i < students.length; i++) {
-        const student = students[i];
+      for (const [type, students] of Object.entries(studentsData)) {
+        if (students.length === 0) continue;
 
-        // Create a div element to render the admission card
-        const container = document.createElement("div");
-        container.style.width = "210mm"; // A4 width
-        container.style.padding = "20px";
-        container.style.backgroundColor = "#fff";
-        container.id = `admission-card-${type}-${i}`;
-        document.body.appendChild(container);
-
-        const root = createRoot(container);
-        const renderComplete = new Promise((resolve) => {
-          root.render(
-            <AdmissionCard
-              student={student}
-              type={type}
-              level_ordinal={level_ordinal}
-              batchFullDetailsData={batchFullDetailsData}
-              decodeBatchCode={decodeBatchCode}
-              formData={formData}
-              sem_ordinal={sem_ordinal}
-              subjectObject={subjectObject}
-              onRenderComplete={resolve}
-            />
-          );
+        const pdf = new jsPDF({
+          orientation: "portrait",
+          unit: "mm",
+          format: "a4",
+          compress: true,
         });
 
-        await renderComplete;
+        const quality = 2; // Higher value = better quality
 
-        // Calculate the total height of the rendered admission card
-        const totalHeightPx = container.offsetHeight;
-        const pageHeightPx = 1122; // A4 height in pixels at 96 DPI
-        const scale = 2;
+        for (let i = 0; i < students.length; i++) {
+          const student = students[i];
 
-        let currentPage = 0;
-        while (currentPage * pageHeightPx < totalHeightPx) {
-          const canvas = await html2canvas(container, {
-            scale,
-            useCORS: true,
-            height: pageHeightPx,
-            y: currentPage * pageHeightPx,
-            scrollY: -currentPage * pageHeightPx,
-            windowWidth: container.offsetWidth,
-            windowHeight: totalHeightPx,
+          // Create a container with precise A4 dimensions
+          const container = document.createElement("div");
+          container.style.width = "210mm";
+          container.style.padding = "10mm";
+          container.style.backgroundColor = "#fff";
+          container.style.boxSizing = "border-box";
+          container.style.position = "absolute";
+          container.style.left = "-9999px";
+          container.id = `admission-card-${type}-${i}`;
+          document.body.appendChild(container);
+
+          // Render the component and wait for completion
+          const root = createRoot(container);
+          await new Promise((resolve) => {
+            root.render(
+              <AdmissionCard
+                student={student}
+                type={type}
+                level_ordinal={level_ordinal}
+                batchFullDetailsData={batchFullDetailsData}
+                academicYear={academicYear}
+                formData={formData}
+                sem_ordinal={sem_ordinal}
+                subjectObject={subjectObject}
+                onRenderComplete={resolve}
+              />
+            );
           });
 
-          const imgData = canvas.toDataURL("image/png");
-          const imgProps = pdf.getImageProperties(imgData);
-          const pdfWidth = pdf.internal.pageSize.getWidth();
-          const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
+          // Wait for a little extra time to ensure rendering is complete
+          // await new Promise((resolve) => setTimeout(resolve, 500));
 
-          // Calculate the image height and position considering margins
-          const availableHeight =
-            pdf.internal.pageSize.getHeight() - margin * 2;
-          const scaledHeight = Math.min(pdfHeight, availableHeight);
-          const yPosition = margin;
+          // Use html2canvas with better settings
+          const canvas = await html2canvas(container, {
+            scale: quality,
+            useCORS: true,
+            logging: false,
+            allowTaint: true,
+            // imageTimeout: 2000,
+          });
 
-          // Add the image to the PDF with margins
-          pdf.addImage(imgData, "PNG", 0, yPosition, pdfWidth, scaledHeight);
+          // Convert canvas to image
+          const imgData = canvas.toDataURL("image/jpeg", 1.0);
 
-          // Add a new page for the next segment, except the last one
-          if ((currentPage + 1) * pageHeightPx < totalHeightPx) {
+          // Calculate dimensions to fit the page
+          const imgWidth = pdf.internal.pageSize.getWidth();
+          const imgHeight = (canvas.height * imgWidth) / canvas.width;
+
+          // Check if the content exceeds page height
+          const pageHeight = pdf.internal.pageSize.getHeight();
+
+          // If this is not the first student, add a new page
+          if (i > 0) {
             pdf.addPage();
           }
-          currentPage++;
+
+          // Add image to PDF - ensure it fits on one page
+          const contentHeight = Math.min(imgHeight, pageHeight - 10); // Subtract margin
+          pdf.addImage(imgData, "JPEG", 0, 0, imgWidth, contentHeight);
+
+          // Handle content that exceeds page height by adding additional pages
+          if (imgHeight > pageHeight) {
+            let heightLeft = imgHeight - pageHeight;
+            let position = -pageHeight;
+
+            while (heightLeft > 0) {
+              position = position - pageHeight;
+              pdf.addPage();
+              pdf.addImage(imgData, "JPEG", 0, position, imgWidth, imgHeight);
+              heightLeft -= pageHeight;
+            }
+          }
+
+          // Clean up by removing the container
+          document.body.removeChild(container);
         }
 
-        // Clean up the DOM after rendering
-        document.body.removeChild(container);
-
-        // Add a new page for the next student, except the last one
-        if (i < students.length - 1) {
-          pdf.addPage();
-        }
+        // Save the PDF for the current exam type
+        pdf.save(
+          `${batchFullDetailsData.batch_code}_${type}_admission_cards.pdf`
+        );
       }
-
-      // Save the PDF for the current exam type
-      pdf.save(
-        `${batchFullDetailsData.batch_code}_${type}_admission_cards.pdf`
-      );
+    } catch (error) {
+      console.error("Error generating PDFs:", error);
+    } finally {
+      setGenerating(false);
     }
-    setGenerating(false);
   };
 
   const { data: latestAdmissionTemplateData } = useQuery({
@@ -194,16 +208,11 @@ const Page = () => {
 
   useEffect(() => {
     if (batchFullDetailsData) {
-      setDecodeBatchCode(parseString(batchFullDetailsData.batch_code));
+      setLevel_ordinal(numberToOrdinalWord(batchFullDetailsData.level));
+      setSem_ordinal(numberToOrdinalWord(batchFullDetailsData.sem));
+      setAcademicYear(batchFullDetailsData.academic_year);
     }
   }, [batchFullDetailsData]);
-
-  useEffect(() => {
-    if (decodeBatchCode) {
-      setLevel_ordinal(numberToOrdinalWord(decodeBatchCode.level));
-      setSem_ordinal(numberToOrdinalWord(decodeBatchCode.sem_no));
-    }
-  }, [decodeBatchCode]);
 
   useEffect(() => {
     setSubjectObject(createSubjectObject(batchCurriculumData));
@@ -232,7 +241,7 @@ const Page = () => {
         batchCurriculumData={batchCurriculumData}
         level_ordinal={level_ordinal}
         sem_ordinal={sem_ordinal}
-        decodeBatchCode={decodeBatchCode}
+        academicYear={academicYear}
         subjectObject={subjectObject}
       />
       <div
@@ -251,4 +260,4 @@ const Page = () => {
   );
 };
 
-export default Page;
+export default AdmissionPage;

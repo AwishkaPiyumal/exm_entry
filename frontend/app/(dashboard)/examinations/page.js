@@ -29,9 +29,12 @@ const users = () => {
   if (isNoOfCurriculumsDataLoading || isNoOfBatchesDataLoading)
     return (
       <div className="flex justify-end md:justify-center">
-        <div className="md:w-[70%] flex gap-6 flex-wrap">
+        <div className="w-[80%] md:w-[85%] lg:w-[70%] flex flex-col sm:flex-row gap-6 flex-wrap">
           {[1, 2].map((_, i) => (
-            <Skeleton key={i} className="w-[30%] h-32 max-w-[30%] rounded-xl" />
+            <Skeleton
+              key={i}
+              className="sm:w-[30%] h-32 sm:max-w-[30%] rounded-xl"
+            />
           ))}
         </div>
       </div>
@@ -39,10 +42,10 @@ const users = () => {
 
   return (
     <div className="flex justify-end md:justify-center">
-      <div className="md:w-[70%] flex gap-6 flex-wrap">
+      <div className="w-[80%] md:w-[85%] lg:w-[70%] flex flex-col sm:flex-row gap-6 flex-wrap">
         <Link
           href={`${pathname}/curriculums`}
-          className="min-w-[30%] max-w-[30%] hover:shadow-md rounded-xl"
+          className="sm:w-[30%] sm:max-w-[30%] hover:shadow-md rounded-xl"
         >
           <Card>
             <CardHeader>
@@ -56,7 +59,7 @@ const users = () => {
         </Link>
         <Link
           href={`${pathname}/batches`}
-          className="min-w-[32%] hover:shadow-md rounded-xl"
+          className="sm:w-[30%] sm:max-w-[30%] hover:shadow-md rounded-xl"
         >
           <Card>
             <CardHeader>

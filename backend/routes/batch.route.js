@@ -21,6 +21,7 @@ import {
   getAllBatchesForFaculty,
   getDeadlinesForBatch,
   getAllActiveBatchesProgesses,
+  getBatchOpenDate,
 } from "../controllers/batch.controller.js";
 import { verifyUser } from "../utils/verifyUsers.js";
 
@@ -72,6 +73,12 @@ router.post(
   "/getDeadlinesForBatch",
   verifyUser(["1", "2", "3", "4"]),
   getDeadlinesForBatch
+);
+
+router.post(
+  "/getBatchOpenDate",
+  verifyUser(["1", "2", "3", "4"]),
+  getBatchOpenDate
 );
 
 export default router;

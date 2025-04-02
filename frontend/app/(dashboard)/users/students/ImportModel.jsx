@@ -91,18 +91,32 @@ const ImportModel = ({ isImportOpen, setIsImportOpen, importModalRef }) => {
               <ul className="list-disc text-sm">
                 <li>Ensure the file is in CSV format.</li>
                 <li>
-                  The columns must be in the following order:
+                  The first row must be a header row, and the columns must be in
+                  the following exact order:
                   <ol className="list-decimal list-inside">
-                    <li>Name</li>
-                    <li>User name</li>
-                    <li>Index no</li>
-                    <li>Email</li>
-                    <li>Contact no</li>
+                    <li>
+                      <strong>Name</strong>
+                    </li>
+                    <li>
+                      <strong>User name</strong>
+                    </li>
+                    <li>
+                      <strong>Index no</strong>
+                    </li>
+                    <li>
+                      <strong>Email</strong>
+                    </li>
+                    <li>
+                      <strong>Contact no</strong>
+                    </li>
                   </ol>
                 </li>
-                <li>Each row should represent a single student.</li>
+                <li>
+                  Each row after the header must represent a single student.
+                </li>
               </ul>
             </div>
+
             <div className="grid gap-4 py-4">
               <Dropzone file={file} setFile={setFile} />
             </div>

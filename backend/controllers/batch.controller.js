@@ -105,6 +105,7 @@ export const getBatchById = async (req, res, next) => {
         ...degFacDepResults[0][0],
         subjects,
         batch_id,
+        application_open: batch[0][0].application_open,
       });
     } catch (error) {
       console.error("Error retrieving batch:", error);
@@ -121,18 +122,39 @@ export const getBatchById = async (req, res, next) => {
 };
 
 export const createBatch = async (req, res, next) => {
-  const { batch_code, subjects, status = "true", deg_id } = req.body;
+  const {
+    batch_code,
+    subjects,
+    status = "true",
+    deg_id,
+    application_open,
+    academic_year,
+    level,
+    sem_no,
+    students_end,
+    lecturers_end,
+    hod_end,
+    dean_end,
+  } = req.body;
 
   try {
     const conn = await pool.getConnection();
     try {
-      if (!batch_code || !status || !Object.keys(subjects).length || !deg_id) {
-        return next(
-          errorProvider(
-            400,
-            "All fields (batch_code, status, subjects, deg_id) are required"
-          )
-        );
+      if (
+        !batch_code ||
+        !status ||
+        !Object.keys(subjects).length ||
+        !deg_id ||
+        !application_open ||
+        !academic_year ||
+        !level ||
+        !sem_no ||
+        !students_end ||
+        !lecturers_end ||
+        !hod_end ||
+        !dean_end
+      ) {
+        return next(errorProvider(400, "All fields are required"));
       }
 
       await conn.beginTransaction();
@@ -150,8 +172,17 @@ export const createBatch = async (req, res, next) => {
 
       // Insert batch and retrieve batch_id
       const [batchResult] = await conn.query(
-        "CALL InsertBatch(?, ?, ?, ?, @batch_id); SELECT @batch_id AS batch_id;",
-        [batch_code, Object.keys(subjects).join(","), status, deg_id]
+        "CALL InsertBatch(?, ?, ?, ?, ?, ?, ?, ?, @batch_id); SELECT @batch_id AS batch_id;",
+        [
+          batch_code,
+          Object.keys(subjects).join(","),
+          status,
+          deg_id,
+          application_open,
+          academic_year,
+          level,
+          sem_no,
+        ]
       );
       const batch_id = batchResult[1][0].batch_id;
 
@@ -179,14 +210,42 @@ export const createBatch = async (req, res, next) => {
         ),
       ]);
 
-      let desc = `Batch created with batch_id=${batch_id}, sub_ids=${Object.keys(
+      await conn.execute(
+        `INSERT INTO batch_time_periods (batch_id, user_type, end_date)
+         VALUES (?, ?, ?)
+         ON DUPLICATE KEY UPDATE end_date = ?`,
+        [batch_id, "5", students_end, students_end]
+      );
+
+      await conn.execute(
+        `INSERT INTO batch_time_periods (batch_id, user_type, end_date)
+         VALUES (?, ?, ?)
+         ON DUPLICATE KEY UPDATE end_date = ?`,
+        [batch_id, "4", lecturers_end, lecturers_end]
+      );
+
+      await conn.execute(
+        `INSERT INTO batch_time_periods (batch_id, user_type, end_date)
+         VALUES (?, ?, ?)
+         ON DUPLICATE KEY UPDATE end_date = ?`,
+        [batch_id, "3", hod_end, hod_end]
+      );
+
+      await conn.execute(
+        `INSERT INTO batch_time_periods (batch_id, user_type, end_date)
+         VALUES (?, ?, ?)
+         ON DUPLICATE KEY UPDATE end_date = ?`,
+        [batch_id, "2", dean_end, dean_end]
+      );
+
+      let desc = `Batch created with batch_id=${batch_id}, application_open=${application_open}, students_end=${students_end}, lecturers_end=${lecturers_end}, hod_end=${hod_end}, dean_end=${dean_end}, sub_ids=${Object.keys(
         subjects
       ).join(",")}, m_ids=${Object.values(subjects).join(",")}`;
       await conn.query("CALL LogAdminAction(?);", [desc]);
 
       await conn.commit();
       return res.status(201).json({
-        message: "Batch and batch subject details created successfully",
+        message: "Batch created successfully",
       });
     } catch (error) {
       await conn.rollback();
@@ -207,7 +266,21 @@ export const createBatch = async (req, res, next) => {
 };
 
 export const updateBatch = async (req, res, next) => {
-  const { old_subjects, batch_code, subjects, batch_id, deg_id } = req.body;
+  const {
+    old_subjects,
+    batch_code,
+    subjects,
+    batch_id,
+    deg_id,
+    application_open,
+    academic_year,
+    level,
+    sem_no,
+    students_end,
+    lecturers_end,
+    hod_end,
+    dean_end,
+  } = req.body;
 
   try {
     const conn = await pool.getConnection();
@@ -216,14 +289,17 @@ export const updateBatch = async (req, res, next) => {
         !batch_id ||
         !batch_code ||
         !Object.keys(subjects).length ||
-        !deg_id
+        !deg_id ||
+        !application_open ||
+        !academic_year ||
+        !level ||
+        !sem_no ||
+        !students_end ||
+        !lecturers_end ||
+        !hod_end ||
+        !dean_end
       ) {
-        return next(
-          errorProvider(
-            400,
-            "All fields (batch_id, status, batch_code, subjects, deg_id) are required"
-          )
-        );
+        return next(errorProvider(400, "All fields are required"));
       }
 
       await conn.beginTransaction();
@@ -240,11 +316,15 @@ export const updateBatch = async (req, res, next) => {
       }
 
       // Update batch details
-      await conn.query("CALL UpdateBatchDetails(?, ?, ?, ?);", [
+      await conn.query("CALL UpdateBatchDetails(?, ?, ?, ?, ?, ?, ?, ?);", [
         batch_id,
         batch_code,
         Object.keys(subjects).join(","),
         deg_id,
+        application_open,
+        academic_year,
+        level,
+        sem_no,
       ]);
 
       // Drop old tables and columns if subjects changed
@@ -284,14 +364,42 @@ export const updateBatch = async (req, res, next) => {
         ),
       ]);
 
-      let desc = `Batch updated with batch_id=${batch_id}, sub_ids=${Object.keys(
+      await conn.execute(
+        `INSERT INTO batch_time_periods (batch_id, user_type, end_date)
+         VALUES (?, ?, ?)
+         ON DUPLICATE KEY UPDATE end_date = ?`,
+        [batch_id, "5", students_end, students_end]
+      );
+
+      await conn.execute(
+        `INSERT INTO batch_time_periods (batch_id, user_type, end_date)
+         VALUES (?, ?, ?)
+         ON DUPLICATE KEY UPDATE end_date = ?`,
+        [batch_id, "4", lecturers_end, lecturers_end]
+      );
+
+      await conn.execute(
+        `INSERT INTO batch_time_periods (batch_id, user_type, end_date)
+         VALUES (?, ?, ?)
+         ON DUPLICATE KEY UPDATE end_date = ?`,
+        [batch_id, "3", hod_end, hod_end]
+      );
+
+      await conn.execute(
+        `INSERT INTO batch_time_periods (batch_id, user_type, end_date)
+         VALUES (?, ?, ?)
+         ON DUPLICATE KEY UPDATE end_date = ?`,
+        [batch_id, "2", dean_end, dean_end]
+      );
+
+      let desc = `Batch updated with batch_id=${batch_id}, application_open=${application_open}, students_end=${students_end}, lecturers_end=${lecturers_end}, hod_end=${hod_end}, dean_end=${dean_end}, sub_ids=${Object.keys(
         subjects
       ).join(",")}, m_ids=${Object.values(subjects).join(",")}`;
       await conn.query("CALL LogAdminAction(?);", [desc]);
 
       await conn.commit();
       return res.status(200).json({
-        message: "Batch and batch subject details updated successfully",
+        message: "Batch updated successfully",
       });
     } catch (error) {
       await conn.rollback();
@@ -368,10 +476,12 @@ export const getStudentsByBatchId = async (req, res, next) => {
   try {
     const conn = await pool.getConnection();
     try {
-      const query = `SELECT s_id FROM batch_${batch_id}_students`;
+      const tableName = `batch_${batch_id}_students`;
 
       if (batch_id) {
-        const [StudentsInTheBatch] = await conn.execute(query);
+        const [StudentsInTheBatch] = await conn.query(`SELECT s_id FROM ??`, [
+          tableName,
+        ]);
 
         if (!StudentsInTheBatch.length) {
           return res.status(200).json([]);
@@ -559,7 +669,6 @@ export const getBatchesByStudent = async (req, res, next) => {
 export const setBatchTimePeriod = async (req, res, next) => {
   const { batch_id, students_end, lecturers_end, hod_end, dean_end } = req.body;
 
-
   if (!batch_id || !students_end || !lecturers_end || !hod_end || !dean_end) {
     return next(errorProvider(400, "Missing required fields."));
   }
@@ -629,9 +738,6 @@ export const getBatchTimePeriod = async (req, res, next) => {
         `SELECT user_type, end_date FROM batch_time_periods WHERE batch_id = ?`,
         [batch_id]
       );
-
-
-      
 
       return res.status(200).json(results);
     } catch (error) {
@@ -856,7 +962,7 @@ export const uploadAttendanceSheet = async (req, res, next) => {
               .filter(Boolean)
               .join(", ");
 
-              if (updates) {
+            if (updates) {
               const tableName = `batch_${batchId}_students`;
               await conn.query(
                 `UPDATE ${tableName} SET ${updates} WHERE s_id = ?`,
@@ -1091,6 +1197,40 @@ export const getAllActiveBatchesProgesses = async (req, res, next) => {
       );
 
       res.status(200).json(faculty[0]);
+    } finally {
+      conn.release();
+    }
+  } catch (error) {
+    console.error("Database connection error:", error);
+    return next(errorProvider(500, "Failed to establish database connection"));
+  }
+};
+
+export const getBatchOpenDate = async (req, res, next) => {
+  const { batch_id } = req.body;
+
+  try {
+    const conn = await pool.getConnection();
+    try {
+      // Call the first stored procedure to get batch details
+      const [batch] = await conn.query("CALL GetBatchOpenDate(?)", [batch_id]);
+
+      if (!batch[0].length) {
+        return next(errorProvider(404, "No Batches found"));
+      }
+
+      // Parse batch_code in Node.js
+      const application_open = batch[0][0].application_open;
+
+      return res.status(200).json({ application_open });
+    } catch (error) {
+      console.error("Error retrieving batch application_open date:", error);
+      return next(
+        errorProvider(
+          500,
+          "An error occurred while retrieving batch application_open date"
+        )
+      );
     } finally {
       conn.release();
     }

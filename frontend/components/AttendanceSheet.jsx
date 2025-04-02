@@ -31,7 +31,7 @@ function arrayPadEnd(array) {
 const AttendanceSheet = ({
   level_ordinal,
   batchFullDetailsData,
-  decodeBatchCode,
+  academicYear,
   formData,
   sem_ordinal,
   onRenderComplete,
@@ -77,7 +77,7 @@ const AttendanceSheet = ({
         </div>
         <div className="flex items-center">
           <span>Hall&nbsp;No&nbsp;:&nbsp;</span>
-          <div>{formData[groupNo]?.hallNo || ""}</div>
+          <div className="min-w-24">{formData[groupNo]?.hallNo || ""}</div>
         </div>
       </div>
       <h1 className="font-bold text-lg uppercase text-center mb-2">
@@ -87,11 +87,9 @@ const AttendanceSheet = ({
         <div className="w-36 flex justify-between shrink-0">
           Examination <span>:&nbsp;</span>
         </div>
-        <div className="flex flex-wrap items-center">
-          {titleCase(
-            `${level_ordinal} examination in ${batchFullDetailsData?.deg_name} - ${decodeBatchCode.academic_year} - ${sem_ordinal} semester -`
-          )}
-          &nbsp;
+        <div className="flex flex-wrap items-center uppercase">
+          {level_ordinal} examination in {batchFullDetailsData?.deg_name} -{" "}
+          {academicYear} - {sem_ordinal} semester - &nbsp;
           {formData.date?.map((obj, ind) =>
             ind
               ? " ," +
@@ -141,7 +139,7 @@ const AttendanceSheet = ({
             </div>
           </div>
         </div>
-        <div className="flex flex-col gap-1">
+        <div className="flex flex-col gap-1 min-w-56">
           <div className="flex items-center">
             <div className="w-36 flex justify-between shrink-0">
               Date <span>:&nbsp;</span>
@@ -153,10 +151,15 @@ const AttendanceSheet = ({
               Time <span>:&nbsp;</span>
             </div>
             <div className="flex items-center space-x-2">
-              <div>{formData[groupNo]?.fromTime || ""}</div>
+              <div>
+                {formData[groupNo]?.fromTime ||
+                  "\u00a0\u00a0\u00a0\u00a0\u00a0"}
+              </div>
               <span>&ndash;</span>
 
-              <div>{formData[groupNo]?.toTime || ""}</div>
+              <div>
+                {formData[groupNo]?.toTime || "\u00a0\u00a0\u00a0\u00a0\u00a0"}
+              </div>
             </div>
           </div>
           <div className="flex">
@@ -170,14 +173,12 @@ const AttendanceSheet = ({
         </div>
       </div>
 
-      <h3 className="text-xl mt-1 uppercase text-center font-algerian">
-        attendance list
-      </h3>
+      <h3 className="text-xl my-1 uppercase text-center">attendance list</h3>
       {/* </div> */}
 
-      <div className="mb-2 text-base">{parse(formData.description) || ""}</div>
+      <div className="text-sm">{parse(formData.description) || ""}</div>
 
-      <div className="flex">
+      <div className="flex mt-4">
         {[0, 1, 2, 3, 4].map((ele) => (
           <table
             key={ele}
@@ -196,21 +197,29 @@ const AttendanceSheet = ({
             <tbody>
               {splittedArray[ele]?.map((obj, i) => (
                 <tr className="h-[34px]" key={ele + "" + i}>
-                  <td className="border border-black">
+                  <td
+                    className={`border border-black ${
+                      obj && obj != "R" && obj != "M" && !obj.index_num
+                        ? "bg-red-500"
+                        : ""
+                    }`}
+                  >
                     {obj ? (
                       typeof obj == "string" ? (
                         obj == "R" ? (
-                          <h1 className="font-semibold text-center">Resit</h1>
+                          <h1 className="flex justify-center -mt-1 pb-2 items-center leading-[1] font-semibold text-center">
+                            Resit
+                          </h1>
                         ) : (
-                          <h1 className="font-semibold text-center">Medical</h1>
+                          <h1 className="flex justify-center -mt-1 pb-2 items-center leading-[1] font-semibold text-center">
+                            Medical
+                          </h1>
                         )
                       ) : (
                         <h1
-                          className={`text-center text-wrap ${
-                            obj.index_num ? "" : "bg-red-500"
-                          }`}
+                          className={`flex justify-center leading-[1] -mt-1 pb-2 items-center text-wrap`}
                         >
-                          {obj.index_num || "Index no missing"}
+                          {obj.index_num || "Missing!"}
                         </h1>
                       )
                     ) : (

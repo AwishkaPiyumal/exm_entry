@@ -4,6 +4,7 @@ import { fetchEmailsForUserType } from "../utils/functions.js";
 import mailer from "../utils/mailer.js";
 
 export const applyExam = async (req, res, next) => {
+  const { removedSubjects } = req.body;
   const { user_id } = req.user;
 
   if (!user_id) {
@@ -13,8 +14,13 @@ export const applyExam = async (req, res, next) => {
   try {
     const conn = await pool.getConnection();
     try {
+      let remSubStr = removedSubjects.join(",");
+
       // Call the stored procedure and retrieve the OUT parameter
-      await conn.query("CALL ApplyExam(?, @out_batch_id);", [user_id]);
+      await conn.query("CALL ApplyExam(?, ?,@out_batch_id);", [
+        user_id,
+        remSubStr,
+      ]);
 
       // Retrieve the OUT parameter value
       const [[result]] = await conn.query("SELECT @out_batch_id AS batch_id");
@@ -321,7 +327,7 @@ export const getLatestAdmissionTemplate = async (req, res, next) => {
       }
 
       const response = rows[0][0];
-      if (response.data) {
+      if (response?.data) {
         response.data = JSON.parse(response.data);
       }
 
@@ -607,7 +613,7 @@ export const getLatestAttendanceTemplate = async (req, res, next) => {
 
       const response = rows[0][0];
 
-      if (response.data) {
+      if (response?.data) {
         response.data = JSON.parse(response.data);
       }
 

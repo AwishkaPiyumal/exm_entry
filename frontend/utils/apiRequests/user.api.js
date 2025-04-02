@@ -29,9 +29,9 @@ export const getStudentById = async (user_id) => {
   return response.data;
 };
 
-export const getStudentByDegShort = async (short) => {
-  const response = await axiosInstance.post("/user/getStudentByDegShort", {
-    short,
+export const getFacStudentByBatchId = async (batch_id) => {
+  const response = await axiosInstance.post("/user/getFacStudentByBatchId", {
+    batch_id,
   });
   return response.data;
 };

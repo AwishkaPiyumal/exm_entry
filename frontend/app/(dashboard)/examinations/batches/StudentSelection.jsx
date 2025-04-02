@@ -31,15 +31,16 @@ import {
 } from "@/components/ui/table";
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { getStudentByDegShort } from "@/utils/apiRequests/user.api";
+import { getFacStudentByBatchId } from "@/utils/apiRequests/user.api";
 import { MdCancel } from "react-icons/md";
+import { getBatchOpenDate } from "@/utils/apiRequests/batch.api";
 
 const StudentSelection = ({
-  feedDegShort,
   selectedStudents,
   setSelectedStudents,
   feedId,
   oldDataRefetch,
+  oldData,stuData
 }) => {
   const [sorting, setSorting] = useState([]);
   const [columnFilters, setColumnFilters] = useState([]);
@@ -47,11 +48,14 @@ const StudentSelection = ({
   const [rowSelection, setRowSelection] = useState({});
   const [filteredStuData, setFilteredStuData] = useState([]);
   const [searchValue, setSearchValue] = useState("");
+  const [isOpenDatePassed, setIsOpenDatePassed] = useState(true);
 
-  const { data: stuData, refetch } = useQuery({
-    queryFn: () => getStudentByDegShort(feedDegShort),
-    queryKey: ["students", "faculty", "short", feedDegShort],
-    enabled: false,
+ 
+
+  const { data } = useQuery({
+    queryFn: () => getBatchOpenDate(feedId),
+    queryKey: ["batch", "openDate", feedId],
+    enabled: Boolean(feedId),
   });
 
   const onSearched = () => {
@@ -68,6 +72,16 @@ const StudentSelection = ({
     }
   };
 
+  useEffect(() => {
+    if (data) {
+      if (new Date(data.application_open) < new Date()) {
+        setIsOpenDatePassed(true);
+      } else {
+        setIsOpenDatePassed(false);
+      }
+    }
+  }, [data]);
+
   const columns = [
     {
       id: "select",
@@ -76,6 +90,7 @@ const StudentSelection = ({
           checked={filteredStuData.every((ele) =>
             selectedStudents?.includes(ele.s_id)
           )}
+          disabled={isOpenDatePassed}
           onCheckedChange={(value) => {
             setSelectedStudents((cur) => {
               if (lodash.isEqual(selectedStudents, stuData)) {
@@ -104,6 +119,7 @@ const StudentSelection = ({
       cell: ({ row }) => (
         <Checkbox
           checked={selectedStudents?.includes(row.original.s_id)}
+          disabled={isOpenDatePassed && oldData?.includes(row.original.s_id)}
           onCheckedChange={(value) =>
             setSelectedStudents((cur) => {
               const temp = [...cur];
@@ -184,12 +200,6 @@ const StudentSelection = ({
       rowSelection,
     },
   });
-
-  useEffect(() => {
-    if (feedId) {
-      refetch();
-    }
-  }, [feedId]);
 
   useEffect(() => {
     if (feedId) {

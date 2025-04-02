@@ -13,7 +13,7 @@ const Progress = React.forwardRef(
         className={cn(
           `relative text-xs h-2 w-full overflow-hidden rounded-full before:content-[attr(data-content)] 
          before:w-full before:h-full before:z-30 before:absolute before:left-0 before:top-0 before:flex before:justify-center before:items-center before:text-white ${
-           barColor ? barColor : "border border-red-600 before:text-red-600"
+           barColor ? barColor : "border border-black before:text-black"
          } bg-opacity-20`,
           className
         )}

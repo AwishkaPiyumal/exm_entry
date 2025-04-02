@@ -110,7 +110,7 @@ const AttendanceSheetTemplate = ({
   latestAttendanceTemplateData,
   level_ordinal,
   sem_ordinal,
-  decodeBatchCode,
+  academicYear,
   sub_name,
   sub_code,
   pageArr,
@@ -311,7 +311,7 @@ const AttendanceSheetTemplate = ({
         </div>
         <div className="flex flex-wrap">
           {titleCase(
-            `${level_ordinal} examination in ${batchFullDetailsData?.deg_name} - ${decodeBatchCode.academic_year} -${sem_ordinal} semester -`
+            `${level_ordinal} examination in ${batchFullDetailsData?.deg_name} - ${academicYear} - ${sem_ordinal} semester -`
           )}
           <div className="flex space-x-2 items-center flex-wrap">
             {formData.date?.map((yearBlock, yearIndex) => (
@@ -564,9 +564,7 @@ const AttendanceSheetTemplate = ({
         </div>
       </div>
 
-      <h3 className="text-xl mt-1 uppercase text-center font-algerian">
-        attendance list
-      </h3>
+      <h3 className="text-xl mt-1 uppercase text-center">attendance list</h3>
 
       <RichTextEditorIndividual
         setFormData={setFormData}
@@ -607,7 +605,7 @@ const AttendanceSheetTemplate = ({
                             obj.index_num ? "" : "bg-red-500"
                           }`}
                         >
-                          {obj.index_num || "Index no missing"}
+                          {obj.index_num || "Missing!"}
                         </h1>
                       )
                     ) : (

@@ -30,7 +30,6 @@ const ResetPassword = () => {
       router.replace("/");
     },
     onError: (err) => {
-
       if (err.status == 429) {
         toast.error(err.response.data.message);
       } else {
@@ -52,8 +51,8 @@ const ResetPassword = () => {
 
   if (!token) {
     return (
-      <div className="flex items-center justify-center h-full">
-        <div className="bg-white rounded-lg shadow-lg w-[425px] p-6">
+      <div className="flex items-center justify-center h-full px-2 sm:px-0">
+        <div className="bg-white rounded-lg shadow-lg w-full sm:w-[425px] p-6">
           <div className="flex justify-between items-center border-b pb-2 mb-4">
             <h3 className="text-lg font-semibold">Reset Password</h3>
           </div>

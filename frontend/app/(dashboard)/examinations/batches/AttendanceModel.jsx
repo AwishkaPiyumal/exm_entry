@@ -67,10 +67,16 @@ const AttendanceModel = ({
               <ul className="list-disc text-sm">
                 <li>Ensure the file is in CSV format.</li>
                 <li>
-                  The 1st column is user name and remainings are
-                  attendance(headers are subjects codes ex:IT&nbsp;3143(P))
+                  The first row must be a header row (User name and subjects
+                  codes ex:IT&nbsp;3143(P)).
                 </li>
-                <li>Each row should represent a single student.</li>
+                <li>
+                  Each row after the header must represent a single student
+                </li>
+                <li>
+                  The 1st column is user name and remainings are attendance
+                  percentage (without '%').
+                </li>
               </ul>
             </div>
             <div className="grid gap-4 py-4">

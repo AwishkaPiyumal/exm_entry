@@ -7,7 +7,7 @@ import {
 
 const SummaryCard = ({ title, desc }) => {
   return (
-    <Card className={`w-[22%] max-w-[22%] rounded-none`}>
+    <Card className={`sm:w-[22%] sm:max-w-[22%] rounded-none`}>
       <CardHeader>
         <CardTitle className={`text-5xl text-center font-light`}>
           {title}

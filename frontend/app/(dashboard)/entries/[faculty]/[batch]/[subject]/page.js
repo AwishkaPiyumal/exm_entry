@@ -13,7 +13,7 @@ const users = () => {
 
   return (
     <div className="flex justify-end md:justify-center">
-      <div className="md:w-[70%] ">
+      <div className="w-[95%] md:w-[85%] lg:w-[70%]">
         <StudentDetails
           sub_id={sub_id}
           sub_name={sub_name}

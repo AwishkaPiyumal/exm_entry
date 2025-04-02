@@ -5,6 +5,7 @@ import Image from "next/image";
 import parse from "html-react-parser";
 import { FaCheck } from "react-icons/fa6";
 import { FaTimes } from "react-icons/fa";
+import UoV_Logo_Base64 from "@/lib/logo_base";
 
 let months = {
   0: "January",
@@ -26,7 +27,7 @@ const AdmissionCard = ({
   type,
   level_ordinal,
   batchFullDetailsData,
-  decodeBatchCode,
+  academicYear,
   formData,
   sem_ordinal,
   subjectObject,
@@ -42,11 +43,16 @@ const AdmissionCard = ({
     <div className="p-4 pt-0 max-w-4xl mx-auto font-times bg-white">
       <div className="text-center mb-2 ">
         <Image
-          src={UoV_Logo}
+          src={UoV_Logo_Base64}
           alt="UOV logo"
           height={100}
           width={100}
-          className="mx-auto mb-2"
+          className="mx-auto"
+          style={{
+            maxWidth: "100px",
+            maxHeight: "100px",
+            objectFit: "contain",
+          }}
         />
         <h1 className="font-bold text-lg uppercase leading-[1]">
           University of Vavuniya
@@ -56,29 +62,27 @@ const AdmissionCard = ({
         </h2>
         <div className="flex justify-center font-semibold text-base uppercase space-x-2 items-center flex-wrap leading-[1]">
           {level_ordinal} examination in {batchFullDetailsData?.deg_name} -{" "}
-          {decodeBatchCode.academic_year} - {sem_ordinal}&nbsp;semester -
+          {academicYear} - {sem_ordinal}&nbsp;semester -{" "}
           {formData.date?.map((obj, ind) =>
             ind
-              ? " ," +
+              ? ", " +
                 obj.months
                   .map((month, index) =>
                     index ? `/${months[month]}` : `${months[month]}`
                   )
                   .join("") +
-                " " +
+                "\u00a0" +
                 obj.year
               : obj.months
                   .map((month, index) =>
                     index ? `/${months[month]}` : `${months[month]}`
                   )
                   .join("") +
-                " " +
+                "\u00a0" +
                 obj.year
           )}
         </div>
-        <h3 className="text-xl uppercase font-bold leading-[1.1]">
-          Admission Card
-        </h3>
+        <h3 className="text-xl uppercase font-bold l">Admission Card</h3>
       </div>
 
       <div className="flex justify-between mb-2 text-sm">

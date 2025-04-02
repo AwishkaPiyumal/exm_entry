@@ -1,7 +1,5 @@
 import axiosInstance from "@/lib/axiosInstance";
 import axios from "axios";
-const server = process.env.NEXT_PUBLIC_BACKEND_SERVER || "localhost";
-const port = process.env.NEXT_PUBLIC_BACKEND_PORT || "8080";
 
 export const getAllBatches = async () => {
   const response = await axiosInstance.get("/batch/getAllBatches");
@@ -117,10 +115,17 @@ export const getDeadlinesForBatch = async (batch_id) => {
   return response.data;
 };
 
+export const getBatchOpenDate = async (batch_id) => {
+  const response = await axiosInstance.post("/batch/getBatchOpenDate", {
+    batch_id,
+  });
+  return response.data;
+};
+
 export const uploadAttendanceSheet = async (data) => {
   try {
     const response = await axios.post(
-      `http://${server}:${port}/api1/batch/uploadAttendanceSheet`,
+      `/api/batch/uploadAttendanceSheet`,
       data,
       {
         headers: {

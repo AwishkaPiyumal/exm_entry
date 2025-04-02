@@ -24,7 +24,7 @@ import StudentRow from "./StudentRow";
 import { addMedicalResitStudents } from "@/utils/apiRequests/entry.api";
 
 const Table = forwardRef(({ className, ...props }, ref) => (
-  <div className="relative w-full h-80 overflow-auto">
+  <div className="relative w-full h-[67%] overflow-auto">
     <table
       ref={ref}
       className={cn("w-full caption-bottom text-sm", className)}
@@ -113,7 +113,7 @@ const Model = ({
                   <TableHead className="w-24 text-center">Type</TableHead>
                   {curriculumsOfBatchData &&
                     curriculumsOfBatchData.map((obj) => (
-                      <TableHead key={obj.sub_id} className="w-16">
+                      <TableHead key={obj.sub_id} className="space-x-2">
                         {obj.sub_code}
                       </TableHead>
                     ))}

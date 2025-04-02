@@ -96,13 +96,27 @@ export function titleCase(str) {
     "of",
     "from",
   ];
+
   return str
     .toLowerCase()
     .split(" ")
     .map((word, index) => {
-      if (index === 0 || !excludedWords.includes(word)) {
-        return word.charAt(0).toUpperCase() + word.slice(1);
+      // Find the first alphabetical character in the word
+      const firstAlphaIndex = word.search(/[a-z]/i);
+
+      if (firstAlphaIndex !== -1) {
+        const firstAlpha = word[firstAlphaIndex].toUpperCase();
+        word =
+          word.substring(0, firstAlphaIndex) +
+          firstAlpha +
+          word.substring(firstAlphaIndex + 1);
       }
+
+      // Capitalize if it's the first word or not in the excluded list
+      if (index === 0 || !excludedWords.includes(word)) {
+        return word;
+      }
+
       return word;
     })
     .join(" ");

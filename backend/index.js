@@ -10,28 +10,32 @@ import courseRouter from "./routes/course.route.js";
 import batchRouter from "./routes/batch.route.js";
 import entryRouter from "./routes/entry.route.js";
 
-import { generatePassword, hashPassword } from "./utils/functions.js";
+import { hashPassword } from "./utils/functions.js";
 import pool from "./config/db.js";
 import "./utils/cronScheduler.js";
 
 dotenv.config();
 
-const port = 8080;
+const PORT = process.env.PORT;
+const FRONTEND_SERVER = process.env.FRONTEND_SERVER;
+const FRONTEND_PORT = process.env.FRONTEND_PORT;
+const ADMIN_EMAIL = process.env.ADMIN_EMAIL;
+const ADMIN_USERNAME = process.env.ADMIN_USERNAME;
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
 
 const app = express();
 app.use(express.json());
 app.use(cookieParser());
 app.use(
   cors({
-    origin: "http://localhost:3000",
+    origin: `http://${FRONTEND_SERVER}:${FRONTEND_PORT}`,
     credentials: true,
   })
 );
 
 const adminRegister = async () => {
   try {
-    const password = "admin@123";
-    const hashedPassword = await hashPassword(password);
+    const hashedPassword = await hashPassword(ADMIN_PASSWORD);
 
     const conn = await pool.getConnection();
 
@@ -39,15 +43,15 @@ const adminRegister = async () => {
       await conn.beginTransaction();
 
       const [adminExists] = await conn.execute(
-        "SELECT COUNT(*) AS count FROM user WHERE user_name = 'admin' OR email = 'admin@admin.com'"
+        "SELECT COUNT(*) AS count FROM user WHERE user_name = ? OR email = ?",
+        [ADMIN_USERNAME, ADMIN_EMAIL]
       );
 
       if (adminExists[0].count == 0) {
         const [userResult] = await conn.execute(
           "INSERT INTO user(user_name, email, password, role_id) VALUES (?,?,?,?)",
-          ["admin", "admin@admin.com", hashedPassword, "1"]
+          [ADMIN_USERNAME, ADMIN_EMAIL, hashedPassword, "1"]
         );
-        console.log(userResult);
         console.log("admin created");
       }
 
@@ -89,6 +93,6 @@ app.use((err, req, res, next) => {
   });
 });
 
-app.listen(port, () => {
-  console.log(`app is listening on port ${port}`);
+app.listen(PORT, () => {
+  console.log(`app is listening on port ${PORT}`);
 });

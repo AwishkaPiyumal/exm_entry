@@ -50,7 +50,7 @@ const AdmissionCardTemplate = ({
   batchCurriculumData,
   level_ordinal,
   sem_ordinal,
-  decodeBatchCode,
+  academicYear,
   subjectObject,
 }) => {
   const handleMonthChange = (month, yearIndex, monthIndex) => {
@@ -189,7 +189,7 @@ const AdmissionCardTemplate = ({
 
         <div className="flex justify-center font-semibold text-base uppercase space-x-2 items-center flex-wrap  leading-[1]">
           {level_ordinal} examination in {batchFullDetailsData?.deg_name} -{" "}
-          {decodeBatchCode.academic_year} - {sem_ordinal}
+          {academicYear} - {sem_ordinal}
           &nbsp;semester -
           {formData.date?.map((yearBlock, yearIndex) => (
             <React.Fragment key={yearIndex}>

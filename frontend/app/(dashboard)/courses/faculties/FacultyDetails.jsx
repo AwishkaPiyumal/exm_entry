@@ -159,7 +159,7 @@ const FacultyDetails = () => {
 
   return (
     <>
-      <div className="flex justify-between mb-2 items-start">
+      <div className="flex flex-col sm:flex-row gap-2 sm:gap-0 justify-between mb-2 items-center sm:items-start">
         <div className="bg-white rounded-md flex relative">
           <Input
             placeholder="Search by name"

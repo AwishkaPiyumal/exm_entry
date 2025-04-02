@@ -130,14 +130,14 @@ export const getStudentById = async (req, res, next) => {
   }
 };
 
-export const getStudentByDegShort = async (req, res, next) => {
-  const { short } = req.body;
+export const getFacStudentByBatchId = async (req, res, next) => {
+  const { batch_id } = req.body;
 
   try {
     const conn = await pool.getConnection();
     try {
-      const [students] = await conn.query("CALL GetStudentsByDegreeShort(?);", [
-        short,
+      const [students] = await conn.query("CALL GetFacStudentByBatchId(?);", [
+        batch_id,
       ]);
 
       if (!students[0].length) {

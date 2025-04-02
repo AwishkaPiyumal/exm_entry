@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: 127.0.0.1
--- Generation Time: Mar 05, 2025 at 09:53 PM
+-- Generation Time: Mar 28, 2025 at 06:21 PM
 -- Server version: 10.4.28-MariaDB
 -- PHP Version: 8.2.4
 
@@ -28,6 +28,18 @@ DELIMITER $$
 CREATE DEFINER=`root`@`localhost` PROCEDURE `AddMedicalResitStudents` (IN `p_batch_id` INT, IN `p_sub_id` INT, IN `p_s_id` INT, IN `p_exam_type` VARCHAR(50))   BEGIN
     DECLARE table_name VARCHAR(255);
     DECLARE record_count INT;
+    DECLARE v_academic_year VARCHAR(50);
+    DECLARE v_level INT;
+    DECLARE v_sem INT;
+    DECLARE existing_entry_count INT;
+    DECLARE existing_subs TEXT;
+    DECLARE new_subs TEXT;
+
+    -- Get batch information
+    SELECT academic_year, level, sem 
+    INTO v_academic_year, v_level, v_sem
+    FROM batch 
+    WHERE batch_id = p_batch_id;
 
     -- Construct the dynamic table name
     SET table_name = CONCAT('batch_', p_batch_id, '_sub_', p_sub_id);
@@ -62,6 +74,105 @@ CREATE DEFINER=`root`@`localhost` PROCEDURE `AddMedicalResitStudents` (IN `p_bat
         PREPARE stmt FROM @insert_query;
         EXECUTE stmt;
         DEALLOCATE PREPARE stmt;
+    END IF;
+
+    -- Check if an entry already exists in entry_summary for this student and academic year
+    SELECT COUNT(*) INTO existing_entry_count
+    FROM entry_summary
+    WHERE s_id = p_s_id 
+      AND academic_year = v_academic_year 
+      AND level = v_level 
+      AND sem = v_sem;
+
+    -- If entry exists, update the appropriate column
+    IF existing_entry_count > 0 THEN
+        IF p_exam_type = 'R' THEN
+            -- For resit students
+            SELECT COALESCE(resit_subs, '') INTO existing_subs
+            FROM entry_summary
+            WHERE s_id = p_s_id 
+              AND academic_year = v_academic_year 
+              AND level = v_level 
+              AND sem = v_sem;
+
+            -- Prepare new subjects list
+            IF existing_subs = '' THEN
+                SET new_subs = CAST(p_sub_id AS CHAR);
+            ELSE
+                SET new_subs = CONCAT(existing_subs, ',', CAST(p_sub_id AS CHAR));
+            END IF;
+
+            -- Update resit_subs
+            UPDATE entry_summary 
+            SET resit_subs = new_subs
+            WHERE s_id = p_s_id 
+              AND academic_year = v_academic_year 
+              AND level = v_level 
+              AND sem = v_sem;
+
+        ELSEIF p_exam_type = 'M' THEN
+            -- For medical students
+            SELECT COALESCE(medical_subs, '') INTO existing_subs
+            FROM entry_summary
+            WHERE s_id = p_s_id 
+              AND academic_year = v_academic_year 
+              AND level = v_level 
+              AND sem = v_sem;
+
+            -- Prepare new subjects list
+            IF existing_subs = '' THEN
+                SET new_subs = CAST(p_sub_id AS CHAR);
+            ELSE
+                SET new_subs = CONCAT(existing_subs, ',', CAST(p_sub_id AS CHAR));
+            END IF;
+
+            -- Update medical_subs
+            UPDATE entry_summary 
+            SET medical_subs = new_subs
+            WHERE s_id = p_s_id 
+              AND academic_year = v_academic_year 
+              AND level = v_level 
+              AND sem = v_sem;
+        END IF;
+    ELSE
+        -- If no entry exists, insert a new record
+        IF p_exam_type = 'R' THEN
+            INSERT INTO entry_summary (
+                s_id, 
+                academic_year, 
+                level, 
+                sem, 
+                proper_subs, 
+                medical_subs, 
+                resit_subs
+            ) VALUES (
+                p_s_id,
+                v_academic_year,
+                v_level,
+                v_sem,
+                NULL,
+                NULL,
+                CAST(p_sub_id AS CHAR)
+            );
+        ELSEIF p_exam_type = 'M' THEN
+            INSERT INTO entry_summary (
+                s_id, 
+                academic_year, 
+                level, 
+                sem, 
+                proper_subs, 
+                medical_subs, 
+                resit_subs
+            ) VALUES (
+                p_s_id,
+                v_academic_year,
+                v_level,
+                v_sem,
+                NULL,
+                CAST(p_sub_id AS CHAR),
+                NULL
+            );
+        END IF;
     END IF;
 END$$
 
@@ -125,7 +236,7 @@ CREATE DEFINER=`root`@`localhost` PROCEDURE `AddStudentsToBatch` (IN `p_batch_id
     SET insert_query = CONCAT(
         'INSERT INTO batch_', 
         p_batch_id, 
-        '_students (s_id, applied_to_exam, admission_ready) VALUES '
+        '_students (s_id, applied_to_exam) VALUES '
     );
 
     SET temp_students = p_new_students;
@@ -134,12 +245,12 @@ CREATE DEFINER=`root`@`localhost` PROCEDURE `AddStudentsToBatch` (IN `p_batch_id
         SET student_id = SUBSTRING_INDEX(temp_students, ',', 1);
         SET temp_students = SUBSTRING(temp_students, LOCATE(',', temp_students) + 1);
 
-        SET insert_query = CONCAT(insert_query, '(', student_id, ', "false", "false"), ');
+        SET insert_query = CONCAT(insert_query, '(', student_id, ', "false"), ');
     END WHILE;
 
     -- Handle the last student ID in the list for the INSERT query
     SET student_id = temp_students;
-    SET insert_query = CONCAT(insert_query, '(', student_id, ', "false", "false")');
+    SET insert_query = CONCAT(insert_query, '(', student_id, ', "false")');
 
     -- Execute the INSERT query
     PREPARE stmt FROM insert_query;
@@ -147,15 +258,25 @@ CREATE DEFINER=`root`@`localhost` PROCEDURE `AddStudentsToBatch` (IN `p_batch_id
     DEALLOCATE PREPARE stmt;
 END$$
 
-CREATE DEFINER=`root`@`localhost` PROCEDURE `ApplyExam` (IN `p_user_id` INT, OUT `out_batch_id` INT)   ae:BEGIN
+CREATE DEFINER=`root`@`localhost` PROCEDURE `ApplyExam` (IN `p_user_id` INT, IN `p_removed_subjects` VARCHAR(255), OUT `out_batch_id` INT)   ae:BEGIN
     DECLARE p_s_id INT;
     DECLARE p_batch_id INT;
     DECLARE p_applied_to_exam VARCHAR(50);
     DECLARE done INT DEFAULT FALSE;
     DECLARE sub_col_name VARCHAR(255);
+    DECLARE current_sub_id VARCHAR(10);
     DECLARE attendance_value INT;
     DECLARE eligibility_value VARCHAR(50);
     DECLARE student_deadline DATETIME;
+    DECLARE open_date DATETIME;
+    
+    -- New variables for entry_summary
+    DECLARE v_batch_code VARCHAR(100);
+    DECLARE v_academic_year VARCHAR(50);
+    DECLARE v_level INT;
+    DECLARE v_sem INT;
+    DECLARE v_proper_subs TEXT DEFAULT '';
+    DECLARE existing_entry_count INT;
 
     -- Cursor for getting all subject columns (sub_* columns)
     DECLARE sub_cursor CURSOR FOR 
@@ -187,6 +308,12 @@ CREATE DEFINER=`root`@`localhost` PROCEDURE `ApplyExam` (IN `p_user_id` INT, OUT
     -- Set the OUT parameter with the batch_id
     SET out_batch_id = p_batch_id;
 
+    -- Get batch information
+    SELECT batch_code, level, sem, academic_year 
+    INTO v_batch_code, v_level, v_sem, v_academic_year
+    FROM batch 
+    WHERE batch_id = p_batch_id;
+
     -- Step 3: Check student deadline
     SELECT end_date INTO student_deadline
     FROM batch_time_periods
@@ -195,8 +322,17 @@ CREATE DEFINER=`root`@`localhost` PROCEDURE `ApplyExam` (IN `p_user_id` INT, OUT
     IF NOW() > student_deadline THEN
         SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'The application deadline for this batch has passed.';
     END IF;
+    
+    -- Step 4: Check application open date
+    SELECT application_open INTO open_date
+    FROM batch
+    WHERE batch_id = p_batch_id; 
 
-    -- Step 4: Check if student already applied to exam
+    IF NOW() < open_date THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'The application not opened yet.';
+    END IF;
+
+    -- Step 5: Check if student already applied to exam
     SET @table_name = CONCAT('batch_', p_batch_id, '_students');
     
     -- Check if the dynamic table exists
@@ -223,7 +359,7 @@ CREATE DEFINER=`root`@`localhost` PROCEDURE `ApplyExam` (IN `p_user_id` INT, OUT
         LEAVE ae;
     END IF;
 
-    -- Step 5: Iterate over all subject columns for the batch
+    -- Step 6: Iterate over all subject columns for the batch
     OPEN sub_cursor;
 
     subject_loop: LOOP
@@ -231,6 +367,15 @@ CREATE DEFINER=`root`@`localhost` PROCEDURE `ApplyExam` (IN `p_user_id` INT, OUT
 
         IF done THEN
             LEAVE subject_loop;
+        END IF;
+
+        -- Extract the subject ID from the column name (e.g., 'sub_5' -> '5')
+        SET current_sub_id = SUBSTRING(sub_col_name, 5);
+        
+        -- Check if this subject should be skipped
+        IF p_removed_subjects IS NOT NULL AND FIND_IN_SET(current_sub_id, p_removed_subjects) > 0 THEN
+            -- Skip this subject
+            ITERATE subject_loop;
         END IF;
 
         -- Get the attendance value for the subject
@@ -252,17 +397,24 @@ CREATE DEFINER=`root`@`localhost` PROCEDURE `ApplyExam` (IN `p_user_id` INT, OUT
 
         -- Insert eligibility value into respective subject table (if not exists)
         SET @insert_query = CONCAT(
-            'INSERT IGNORE INTO batch_', p_batch_id, '_sub_', SUBSTRING(sub_col_name, 5), 
+            'INSERT IGNORE INTO batch_', p_batch_id, '_sub_', current_sub_id, 
             ' (s_id, eligibility, exam_type) VALUES (', p_s_id, ', "', eligibility_value, '", "P")'
         );
         PREPARE stmt FROM @insert_query;
         EXECUTE stmt;
         DEALLOCATE PREPARE stmt;
+
+        -- Collect proper subjects (not skipped)
+        IF v_proper_subs = '' THEN
+            SET v_proper_subs = current_sub_id;
+        ELSE
+            SET v_proper_subs = CONCAT(v_proper_subs, ',', current_sub_id);
+        END IF;
     END LOOP;
 
     CLOSE sub_cursor;
 
-    -- Step 6: Update applied_to_exam to 'true' for the student
+    -- Step 7: Update applied_to_exam to 'true' for the student
     SET @update_query = CONCAT(
         'UPDATE ', @table_name, ' 
          SET applied_to_exam = "true" 
@@ -271,6 +423,44 @@ CREATE DEFINER=`root`@`localhost` PROCEDURE `ApplyExam` (IN `p_user_id` INT, OUT
     PREPARE stmt FROM @update_query;
     EXECUTE stmt;
     DEALLOCATE PREPARE stmt;
+
+    -- Step 8: Handle entry_summary
+    -- Check if an entry already exists
+    SELECT COUNT(*) INTO existing_entry_count
+    FROM entry_summary
+    WHERE s_id = p_s_id 
+      AND academic_year = v_academic_year 
+      AND level = v_level 
+      AND sem = v_sem;
+
+    -- If entry exists, update proper_subs
+    IF existing_entry_count > 0 THEN
+        UPDATE entry_summary 
+        SET proper_subs = v_proper_subs
+        WHERE s_id = p_s_id 
+          AND academic_year = v_academic_year 
+          AND level = v_level 
+          AND sem = v_sem;
+    ELSE
+        -- If no entry exists, insert a new record
+        INSERT INTO entry_summary (
+            s_id, 
+            academic_year, 
+            level, 
+            sem, 
+            proper_subs, 
+            medical_subs, 
+            resit_subs
+        ) VALUES (
+            p_s_id,
+            v_academic_year,
+            v_level,
+            v_sem,
+            v_proper_subs,
+            NULL,
+            NULL
+        );
+    END IF;
 
 END$$
 
@@ -656,6 +846,77 @@ CREATE DEFINER=`root`@`localhost` PROCEDURE `FetchStudentWithSubjectsByUserId` (
   DEALLOCATE PREPARE stmt3;
 END$$
 
+CREATE DEFINER=`root`@`localhost` PROCEDURE `FillProperSummary` (IN `p_batch_id` INT)   BEGIN
+    DECLARE v_batch_code VARCHAR(100);
+    DECLARE v_description VARCHAR(500);
+    DECLARE v_deg_id INT;
+    DECLARE v_no_of_sem_per_year VARCHAR(10);
+    DECLARE v_academic_year VARCHAR(50);
+    DECLARE v_sem VARCHAR(10);
+    
+    -- 1. Get batch information and extract academic_year and sem
+    SELECT batch_code, deg_id, description 
+    INTO v_batch_code, v_deg_id, v_description
+    FROM batch 
+    WHERE batch_id = p_batch_id;
+    
+    -- Get the number of semesters per year from degree table
+    SELECT no_of_sem_per_year 
+    INTO v_no_of_sem_per_year
+    FROM degree 
+    WHERE deg_id = v_deg_id;
+    
+    -- Extract academic_year (first four characters of batch_code)
+    SET v_academic_year = LEFT(v_batch_code, 4);
+    
+    -- Extract sem based on no_of_sem_per_year
+    IF CAST(v_no_of_sem_per_year AS UNSIGNED) < 10 THEN
+        SET v_sem = RIGHT(v_batch_code, 1);
+    ELSE
+        SET v_sem = RIGHT(v_batch_code, 2);
+    END IF;
+    
+    -- 2. First execute the INSERT operation
+    SET @insert_query = CONCAT('
+        INSERT INTO entry_summary (s_id, academic_year, sem, proper_subs, medical_subs, resit_subs)
+        SELECT 
+            s.s_id, 
+            ''', v_academic_year, ''', 
+            ''', v_sem, ''', 
+            ''', v_description, ''',
+            '''', -- Empty medical_subs
+            ''''  -- Empty resit_subs
+        FROM 
+            batch_', p_batch_id, '_students s
+        WHERE 
+            NOT EXISTS (
+                SELECT 1 
+                FROM entry_summary e
+                WHERE e.s_id = s.s_id 
+                AND e.academic_year = ''', v_academic_year, '''
+                AND e.sem = ''', v_sem, '''
+            )
+    ');
+    
+    PREPARE stmt FROM @insert_query;
+    EXECUTE stmt;
+    DEALLOCATE PREPARE stmt;
+    
+    -- 3. Then execute the UPDATE operation separately
+    SET @update_query = CONCAT('
+        UPDATE entry_summary e
+        JOIN batch_', p_batch_id, '_students s ON e.s_id = s.s_id
+        SET e.proper_subs = ''', v_description, '''
+        WHERE e.academic_year = ''', v_academic_year, '''
+        AND e.sem = ''', v_sem, '''
+    ');
+    
+    PREPARE stmt FROM @update_query;
+    EXECUTE stmt;
+    DEALLOCATE PREPARE stmt;
+    
+END$$
+
 CREATE DEFINER=`root`@`localhost` PROCEDURE `GenerateIndexNumbers` (IN `p_batch_id` INT, IN `p_course` VARCHAR(50), IN `p_batch` VARCHAR(50), IN `p_startsFrom` INT)   BEGIN
     DECLARE done INT DEFAULT FALSE;
     DECLARE student_s_id INT;
@@ -750,7 +1011,7 @@ CREATE DEFINER=`root`@`localhost` PROCEDURE `GetActiveBatchesWithinDeadline` (IN
     IF pre_role_id IS NOT NULL THEN 
         -- Construct the SQL query
         SET sql_query = CONCAT(
-            'SELECT b.batch_id, b.batch_code 
+            'SELECT b.batch_id, b.batch_code, b.academic_year, b.level, b.sem 
             FROM batch b 
             INNER JOIN batch_time_periods btp ON b.batch_id = btp.batch_id 
             WHERE b.deg_id = ', p_deg_id, ' 
@@ -843,7 +1104,8 @@ END$$
 CREATE DEFINER=`root`@`localhost` PROCEDURE `GetAllActiveBatchesProgesses` ()   BEGIN
     SELECT 
         b.batch_id, 
-        b.batch_code, 
+        b.batch_code,
+        b.application_open,
         GROUP_CONCAT(CONCAT_WS(' ; ', btp.user_type, btp.end_date) ORDER BY btp.end_date DESC SEPARATOR ', ') AS btp_data, 
         a.id AS admission_id, 
         att.id AS attendance_id
@@ -876,6 +1138,9 @@ CREATE DEFINER=`root`@`localhost` PROCEDURE `GetAllBatchDetails` ()   BEGIN
     DECLARE done INT DEFAULT 0;
     DECLARE batchId INT;
     DECLARE batchCode VARCHAR(100);
+    DECLARE academicYear VARCHAR(50);
+ 	DECLARE	levelNo INT(11);
+    DECLARE semNo INT(11);    
     DECLARE shortCode VARCHAR(50);
     DECLARE degName VARCHAR(500);
     DECLARE batchStatus VARCHAR(50);
@@ -883,7 +1148,7 @@ CREATE DEFINER=`root`@`localhost` PROCEDURE `GetAllBatchDetails` ()   BEGIN
 
     -- Declare cursor to fetch all batches, including those without students
     DECLARE batch_cursor CURSOR FOR 
-        SELECT batch_id, batch_code, status FROM batch;
+        SELECT batch_id, batch_code, status, academic_year, level, sem FROM batch;
 
     -- Declare continue handler for cursor
     DECLARE CONTINUE HANDLER FOR NOT FOUND SET done = 1;
@@ -892,6 +1157,9 @@ CREATE DEFINER=`root`@`localhost` PROCEDURE `GetAllBatchDetails` ()   BEGIN
     CREATE TEMPORARY TABLE temp_batch_details (
         batch_id INT,
         batch_code VARCHAR(100),
+        academic_year VARCHAR(50),
+        level INT(11),
+        sem INT(11),
         degree_name VARCHAR(500),
         student_count INT,
         batch_status VARCHAR(50)
@@ -902,30 +1170,28 @@ CREATE DEFINER=`root`@`localhost` PROCEDURE `GetAllBatchDetails` ()   BEGIN
 
     -- Start fetching batches
     read_loop: LOOP
-        FETCH batch_cursor INTO batchId, batchCode, batchStatus;
+        FETCH batch_cursor INTO batchId, batchCode, batchStatus, academicYear, levelNo, semNo;
 
         IF done THEN
             LEAVE read_loop;
         END IF;
 
-        -- Extract the short code from the batch_code (middle part between the first 4 digits and last 2 digits)
-        SET shortCode = SUBSTRING(batchCode, 5, LENGTH(batchCode) - 6); -- Starting at position 5, ending 2 characters before the end
-
-        -- Get the degree name from the degree table based on the short code
+    
         SELECT deg_name INTO degName
-        FROM degree
-        WHERE short = shortCode
+        FROM degree d
+        JOIN batch b ON d.deg_id = b.deg_id
+        WHERE b.batch_id = batchId
         LIMIT 1;  -- In case of multiple matches, select the first one
 
         -- Count the number of students who applied to the exam from the specific batch students table
-        SET @query = CONCAT('SELECT COUNT(*) INTO @studentCount FROM batch_', batchId, '_students WHERE applied_to_exam = "true"');
+        SET @query = CONCAT('SELECT COUNT(*) INTO @studentCount FROM batch_', batchId, '_students');
         PREPARE stmt FROM @query;
         EXECUTE stmt;
         DEALLOCATE PREPARE stmt;
 
         -- Insert the results into the temporary table
-        INSERT INTO temp_batch_details (batch_id, batch_code, degree_name, student_count, batch_status)
-        VALUES (batchId, batchCode, degName, @studentCount, batchStatus);
+        INSERT INTO temp_batch_details (batch_id, batch_code, academic_year, level, sem, degree_name, student_count, batch_status)
+        VALUES (batchId, batchCode, academicYear, levelNo, semNo, degName, @studentCount, batchStatus);
 
     END LOOP;
 
@@ -1103,7 +1369,8 @@ CREATE DEFINER=`root`@`localhost` PROCEDURE `GetAllSubjectsForManager` (IN `p_us
         bcl.m_id = p_m_id
         AND b.status = 'true'
         AND btp.user_type = '4' -- Lecturer user type
-        AND btp.end_date > NOW(); -- Deadline has not passed
+        AND btp.end_date > NOW() -- Deadline has not passed
+        AND b.application_open < NOW(); -- open date has passed
 END$$
 
 CREATE DEFINER=`root`@`localhost` PROCEDURE `GetAppliedStudentsByBatchAndSubject` (IN `p_user_id` INT, IN `p_batch_id` INT, IN `p_sub_id` INT, IN `p_role_id` VARCHAR(50))   BEGIN
@@ -1283,6 +1550,9 @@ CREATE DEFINER=`root`@`localhost` PROCEDURE `GetBatchesByFacultyId` (IN `p_f_id`
     SELECT 
         b.batch_id, 
         b.batch_code, 
+        b.academic_year, 
+        b.level, 
+        b.sem, 
         d.deg_name,
         d.short,
         btp.end_date
@@ -1310,7 +1580,7 @@ CREATE DEFINER=`root`@`localhost` PROCEDURE `GetBatchFullDetails` (IN `p_batch_i
 
     -- Construct the query to fetch batch details
     SET query = CONCAT(
-    'SELECT b.batch_id, b.batch_code, d.deg_name, dept.d_name, fac.f_name ',
+    'SELECT b.batch_id, b.batch_code, b.academic_year, b.level, b.sem, d.deg_name, dept.d_name, fac.f_name ',
     'FROM batch b ',
     'JOIN degree d ON b.deg_id = d.deg_id ',
     'JOIN dep_deg dd ON d.deg_id = dd.deg_id ',
@@ -1324,6 +1594,15 @@ CREATE DEFINER=`root`@`localhost` PROCEDURE `GetBatchFullDetails` (IN `p_batch_i
     PREPARE stmt FROM query;
     EXECUTE stmt;
     DEALLOCATE PREPARE stmt;
+END$$
+
+CREATE DEFINER=`root`@`localhost` PROCEDURE `GetBatchOpenDate` (IN `p_batch_id` INT)   BEGIN
+    SELECT
+    	application_open
+    FROM
+        batch
+    WHERE
+       	batch_id = p_batch_id;
 END$$
 
 CREATE DEFINER=`root`@`localhost` PROCEDURE `GetCurriculumByBatchId` (IN `p_batch_id` INT)   BEGIN
@@ -1559,6 +1838,27 @@ CREATE DEFINER=`root`@`localhost` PROCEDURE `GetEligibleStudentsBySub` (IN `p_ba
     PREPARE stmt FROM @query;
     EXECUTE stmt;
     DEALLOCATE PREPARE stmt;
+END$$
+
+CREATE DEFINER=`root`@`localhost` PROCEDURE `GetFacStudentByBatchId` (IN `p_batch_id` INT)   BEGIN
+    SELECT 
+        sd.s_id,
+        sd.name,
+        u.user_name
+    FROM 
+        student_detail sd
+    INNER JOIN 
+        student s ON sd.s_id = s.s_id
+    INNER JOIN 
+        user u ON s.user_id = u.user_id
+    INNER JOIN 
+        fac_dep fd ON sd.f_id = fd.f_id
+    INNER JOIN 
+        dep_deg dd ON fd.d_id = dd.d_id
+	INNER JOIN 
+        batch b ON b.deg_id = dd.deg_id
+    WHERE 
+        b.batch_id = p_batch_id AND sd.status = 'true';
 END$$
 
 CREATE DEFINER=`root`@`localhost` PROCEDURE `GetFacultyById` (IN `p_f_id` INT)   BEGIN
@@ -1892,7 +2192,7 @@ CREATE DEFINER=`root`@`localhost` PROCEDURE `GetStudentBatchDetails` (IN `p_batc
 
         SET query = CONCAT(
             query,
-            'SELECT b.batch_id, b.batch_code, s.applied_to_exam, d.deg_name, ',
+            'SELECT b.batch_id, b.batch_code, b.academic_year, b.level, b.sem, b.application_open, s.applied_to_exam, d.deg_name, ',
             '(CASE WHEN EXISTS (SELECT 1 FROM admission WHERE batch_id = ', batch_id, ') THEN "true" ELSE "false" END) AS admission_ready, ',
             'bt.end_date AS deadline, ',
             'CASE ',
@@ -1920,7 +2220,7 @@ CREATE DEFINER=`root`@`localhost` PROCEDURE `GetStudentBatchDetails` (IN `p_batc
 
     SET query = CONCAT(
         query,
-        'SELECT b.batch_id, b.batch_code, s.applied_to_exam, d.deg_name, ',
+        'SELECT b.batch_id, b.batch_code, b.academic_year, b.level, b.sem, b.application_open, s.applied_to_exam, d.deg_name, ',
         '(CASE WHEN EXISTS (SELECT 1 FROM admission WHERE batch_id = ', batch_id, ') THEN "true" ELSE "false" END) AS admission_ready, ',
         'bt.end_date AS deadline, ',
         'CASE ',
@@ -2084,27 +2384,6 @@ CREATE DEFINER=`root`@`localhost` PROCEDURE `GetStudentDetailsWithSubjects` (IN 
     DROP TEMPORARY TABLE IF EXISTS temp_subjects;
 END$$
 
-CREATE DEFINER=`root`@`localhost` PROCEDURE `GetStudentsByDegreeShort` (IN `p_short` VARCHAR(50))   BEGIN
-    SELECT 
-        sd.s_id,
-        sd.name,
-        u.user_name
-    FROM 
-        student_detail sd
-    INNER JOIN 
-        fac_dep fd ON sd.f_id = fd.f_id
-    INNER JOIN 
-        dep_deg dd ON fd.d_id = dd.d_id
-    INNER JOIN 
-        degree d ON dd.deg_id = d.deg_id
-    INNER JOIN 
-        student s ON sd.s_id = s.s_id
-    INNER JOIN 
-        user u ON s.user_id = u.user_id
-    WHERE 
-        d.short = p_short AND sd.status = 'true';
-END$$
-
 CREATE DEFINER=`root`@`localhost` PROCEDURE `GetStudentSubjects` (IN `p_batch_id` INT, IN `p_s_id` INT)   BEGIN
     DECLARE done INT DEFAULT FALSE;
     DECLARE sub_id INT;
@@ -2233,9 +2512,9 @@ CREATE DEFINER=`root`@`localhost` PROCEDURE `GetUserByResetToken` (IN `p_token` 
       AND token_expiration > NOW();
 END$$
 
-CREATE DEFINER=`root`@`localhost` PROCEDURE `InsertBatch` (IN `p_batch_code` VARCHAR(100), IN `p_description` VARCHAR(500), IN `p_status` VARCHAR(50), IN `p_deg_id` INT, OUT `p_batch_id` INT)   BEGIN
-    INSERT INTO batch (batch_code, description, status, deg_id)
-    VALUES (p_batch_code, p_description, p_status, p_deg_id);
+CREATE DEFINER=`root`@`localhost` PROCEDURE `InsertBatch` (IN `p_batch_code` VARCHAR(100), IN `p_description` VARCHAR(500), IN `p_status` VARCHAR(50), IN `p_deg_id` INT, IN `p_application_open` DATETIME, IN `p_academic_year` VARCHAR(50), IN `p_level` INT(11), IN `p_sem_no` INT(11), OUT `p_batch_id` INT)   BEGIN
+    INSERT INTO batch (batch_code, description, status, deg_id, application_open, academic_year, level, sem)
+    VALUES (p_batch_code, p_description, p_status, p_deg_id, p_application_open, p_academic_year, p_level, p_sem_no);
     SET p_batch_id = LAST_INSERT_ID();
 END$$
 
@@ -2263,26 +2542,26 @@ CREATE DEFINER=`root`@`localhost` PROCEDURE `InsertBatchCurriculumLecturer` (IN 
     END WHILE;
 END$$
 
-CREATE DEFINER=`root`@`localhost` PROCEDURE `InsertManager` (IN `p_user_id` INT, OUT `p_m_id` INT)   BEGIN
-    INSERT INTO manager(user_id) 
-    VALUES (p_user_id);
+CREATE DEFINER=`root`@`localhost` PROCEDURE `InsertManager` (IN `p_user_id` INT, IN `p_m_id` INT)   BEGIN
+    INSERT INTO manager(user_id, m_id) 
+    VALUES (p_user_id,p_m_id);
+END$$
+
+CREATE DEFINER=`root`@`localhost` PROCEDURE `InsertManagerDetail` (IN `p_name` VARCHAR(255), IN `p_contact_no` VARCHAR(20), IN `p_status` VARCHAR(255), OUT `p_m_id` INT)   BEGIN
+    INSERT INTO manager_detail(name, contact_no, status) 
+    VALUES (p_name, p_contact_no, p_status);
     SET p_m_id = LAST_INSERT_ID();
 END$$
 
-CREATE DEFINER=`root`@`localhost` PROCEDURE `InsertManagerDetail` (IN `p_m_id` INT, IN `p_name` VARCHAR(255), IN `p_contact_no` VARCHAR(20), IN `p_status` VARCHAR(255))   BEGIN
-    INSERT INTO manager_detail(m_id, name, contact_no, status) 
-    VALUES (p_m_id, p_name, p_contact_no, p_status);
+CREATE DEFINER=`root`@`localhost` PROCEDURE `InsertStudent` (IN `p_user_id` INT, IN `p_s_id` INT)   BEGIN
+    INSERT INTO student(user_id,s_id) 
+    VALUES (p_user_id, p_s_id);
 END$$
 
-CREATE DEFINER=`root`@`localhost` PROCEDURE `InsertStudent` (IN `p_user_id` INT, OUT `p_s_id` INT)   BEGIN
-    INSERT INTO student(user_id) 
-    VALUES (p_user_id);
+CREATE DEFINER=`root`@`localhost` PROCEDURE `InsertStudentDetail` (IN `p_name` VARCHAR(255), IN `p_f_id` INT, IN `p_status` VARCHAR(255), IN `p_index_num` VARCHAR(50), IN `p_contact_no` VARCHAR(100), OUT `p_s_id` INT)   BEGIN
+    INSERT INTO student_detail(name, f_id, status, index_num, contact_no) 
+    VALUES (p_name, p_f_id, p_status,p_index_num,p_contact_no);
     SET p_s_id = LAST_INSERT_ID();
-END$$
-
-CREATE DEFINER=`root`@`localhost` PROCEDURE `InsertStudentDetail` (IN `p_s_id` INT, IN `p_name` VARCHAR(255), IN `p_f_id` INT, IN `p_status` VARCHAR(255), IN `p_index_num` VARCHAR(50), IN `p_contact_no` VARCHAR(100))   BEGIN
-    INSERT INTO student_detail(s_id, name, f_id, status, index_num, contact_no) 
-    VALUES (p_s_id, p_name, p_f_id, p_status,p_index_num,p_contact_no);
 END$$
 
 CREATE DEFINER=`root`@`localhost` PROCEDURE `InsertUser` (IN `p_user_name` VARCHAR(255), IN `p_email` VARCHAR(255), IN `p_password` VARCHAR(255), IN `p_role_id` INT, OUT `p_user_id` INT)   BEGIN
@@ -2384,9 +2663,9 @@ CREATE DEFINER=`root`@`localhost` PROCEDURE `UpdateAttendaceData` (IN `p_batch_i
     END IF;
 END$$
 
-CREATE DEFINER=`root`@`localhost` PROCEDURE `UpdateBatchDetails` (IN `p_batch_id` INT, IN `p_batch_code` VARCHAR(100), IN `p_description` VARCHAR(500), IN `p_deg_id` INT)   BEGIN
+CREATE DEFINER=`root`@`localhost` PROCEDURE `UpdateBatchDetails` (IN `p_batch_id` INT, IN `p_batch_code` VARCHAR(100), IN `p_description` VARCHAR(500), IN `p_deg_id` INT, IN `p_application_open` DATETIME, IN `p_academic_year` VARCHAR(50), IN `p_level` INT(11), IN `p_sem_no` INT(11))   BEGIN
     UPDATE batch
-    SET batch_code = p_batch_code, description = p_description, deg_id = p_deg_id
+    SET batch_code = p_batch_code, description = p_description, deg_id = p_deg_id, application_open = p_application_open, academic_year= p_academic_year, level = p_level, sem = p_sem_no
     WHERE batch_id = p_batch_id;
 END$$
 
@@ -2820,7 +3099,223 @@ INSERT INTO `admin_log` (`id`, `description`, `date_time`) VALUES
 (94, 'Batch time period inserted or updated for batch_id=17 to students_end=2025-02-27T13:35, lecturers_end=2025-02-28T17:33, hod_end=2025-03-04T12:36, dean_end=2025-03-04T17:36', '2025-03-05 13:26:51'),
 (95, 'Batch time period inserted or updated for batch_id=17 to students_end=2025-02-27T13:35, lecturers_end=2025-02-28T17:33, hod_end=2025-03-04T12:36, dean_end=2025-03-06T17:36', '2025-03-05 20:31:06'),
 (96, 'Batch time period inserted or updated for batch_id=17 to students_end=2025-02-27T13:35, lecturers_end=2025-02-28T17:33, hod_end=2025-03-04T12:36, dean_end=2025-03-07T17:36', '2025-03-05 20:38:06'),
-(97, 'Batch time period inserted or updated for batch_id=17 to students_end=2025-02-27T13:35, lecturers_end=2025-02-28T17:33, hod_end=2025-03-06T12:36, dean_end=2025-03-07T17:36', '2025-03-05 20:38:13');
+(97, 'Batch time period inserted or updated for batch_id=17 to students_end=2025-02-27T13:35, lecturers_end=2025-02-28T17:33, hod_end=2025-03-06T12:36, dean_end=2025-03-07T17:36', '2025-03-05 20:38:13'),
+(98, 'Batch time period inserted or updated for batch_id=17 to students_end=2025-03-07T13:35, lecturers_end=2025-02-28T17:33, hod_end=2025-03-06T12:36, dean_end=2025-03-07T17:36', '2025-03-06 07:23:47'),
+(99, 'Admission created or updated for batch_id=17, generated_date=05.03.2025, transformedSubjects=16:24,20,21,19,18,22,17,25,23, transformedDate=2025:2, description=<p>Candidates are expected to produce this admission card to the Supervisor/Invigilator/Examiner at the Examination Hall. This form&nbsp;&nbsp;&nbsp;should be filled and signed by the candidates in the presence of the Supervisor/Invigilator/Examiner every time a paper test is taken. The&nbsp;Supervisor/Invigilator/Examiner is expected to authenticate the signature of the candidate by placing his/her initials in the appropriate column. Students are requested to hand over the admission card to the Supervisor on the last day of the paper.</p>, instructions=<p><strong><u>Instructions</u></strong></p><ol><li>No candidate shall be admitted to the Examination hall without this card.</li><li>If any candidate loses this admission card, he/she shall obtain a duplicate Admission Card on payment of Rs.150/-</li><li>Every candidate shall produce his/her Identity Card at every paper/Practical Examination he/she sits for.</li><li>Any unauthorized documents, notes &amp; bags should not be taken into the Examinations.</li><li>When unable to be present for any part of the Examination, it should be notified to me&nbsp;<strong><u>immediately in writing</u></strong>&nbsp;. No appeals will be considered later without this timely notification.</li></ol>, provider=<p>Senior Asst. Registrar</p><p>Examination &amp; Student Admission</p>', '2025-03-07 13:33:51'),
+(100, 'Admission created or updated for batch_id=17, generated_date=05.03.2025, transformedSubjects=16:24,20,21,19,18,22,17,25,23, transformedDate=2025:2, description=<p>Candidates are expected to produce this admission card to the Supervisor/Invigilator/Examiner at the Examination Hall. This form&nbsp;&nbsp;&nbsp;should be filled and signed by the candidates in the presence of the Supervisor/Invigilator/Examiner every time a paper test is taken. The&nbsp;Supervisor/Invigilator/Examiner is expected to authenticate the signature of the candidate by placing his/her initials in the appropriate column. Students are requested to hand over the admission card to the Supervisor on the last day of the paper.</p>, instructions=<p><strong><u>Instructions</u></strong></p><ol><li>No candidate shall be admitted to the Examination hall without this card.</li><li>If any candidate loses this admission card, he/she shall obtain a duplicate Admission Card on payment of Rs.150/-</li><li>Every candidate shall produce his/her Identity Card at every paper/Practical Examination he/she sits for.</li><li>Any unauthorized documents, notes &amp; bags should not be taken into the Examinations.</li><li>When unable to be present for any part of the Examination, it should be notified to me&nbsp;<strong><u>immediately in writing</u></strong>&nbsp;. No appeals will be considered later without this timely notification.</li></ol>, provider=<p>Senior Asst. Registrar</p><p>Examination &amp; Student Admission</p>', '2025-03-07 13:35:06'),
+(101, 'Student created with user_id=144, s_id=103, name=ffhh, f_id=9, index_num=, contact_no=11111111', '2025-03-07 13:42:37'),
+(102, 'Student created with user_id=145, s_id=104, name=dfdf, f_id=8, index_num=, contact_no=erer', '2025-03-07 14:06:38'),
+(103, 'Student created with user_id=146, s_id=146, name=rtyrtyty, f_id=8, index_num=, contact_no=sds', '2025-03-12 15:44:24'),
+(104, 'Student created with user_id=150, s_id=104, name=222222, f_id=8, index_num=222222, contact_no=222222', '2025-03-12 15:58:58'),
+(105, 'Student created with user_id=151, s_id=105, name=3, f_id=10, index_num=3, contact_no=3', '2025-03-12 16:33:45'),
+(106, 'Student created with user_id=152, s_id=106, name=4, f_id=10, index_num=, contact_no=4', '2025-03-12 16:33:48'),
+(107, 'Student status changed for s_id=105 to status=false', '2025-03-12 16:46:50'),
+(108, 'Student status changed for s_id=105 to status=true', '2025-03-12 16:47:05'),
+(109, 'Manager created with user_id=153, m_id=153, name=55, contact_no=55', '2025-03-12 16:56:54'),
+(110, 'Manager created with user_id=154, m_id=8, name=55, contact_no=55', '2025-03-12 17:00:25'),
+(111, 'Manager status changed for m_id=8 to status=false', '2025-03-12 17:00:34'),
+(112, 'Manager status changed for m_id=8 to status=true', '2025-03-12 17:00:35'),
+(113, 'Faculty created with f_name=sfsdf, user_id=155, email=sdfdf, contact_no=dfdfdf', '2025-03-14 11:48:30'),
+(114, 'Faculty created with f_name=ssskk, user_id=156, email=1@1.1hgh, contact_no=fegrgh', '2025-03-14 15:42:06'),
+(117, 'Faculty created with f_name=sgfg, user_id=159, email=dfhgfh, contact_no=d234', '2025-03-14 16:05:52'),
+(119, 'Faculty created with f_name=tutyu, user_id=161, email=d@nm.b, contact_no=huuiyu89', '2025-03-14 16:09:15'),
+(120, 'Faculty created with f_name=gjuhjk, user_id=162, email=dfdf@v.m, contact_no=tyty', '2025-03-14 16:11:41'),
+(121, 'Student created with user_id=163, s_id=107, name=ry3, f_id=8, index_num=cfg3, contact_no=3', '2025-03-14 16:30:17'),
+(122, 'Student created with user_id=164, s_id=108, name=ry4, f_id=8, index_num=, contact_no=4', '2025-03-14 16:30:21'),
+(123, 'Student created with user_id=165, s_id=109, name=dfgfgh, f_id=9, index_num=, contact_no=dfgdfg', '2025-03-14 16:32:12'),
+(125, 'Batch students updated for batch_id=18, droped=, inserted=76', '2025-03-14 18:19:08'),
+(126, 'Admission created or updated for batch_id=17, generated_date=05.03.2025, transformedSubjects=16:24,20,21,19,18,22,17,25,23, transformedDate=2025:2, description=<p>Candidates are expected to produce this admission card to the Supervisor/Invigilator/Examiner at the Examination Hall. This form&nbsp;&nbsp;&nbsp;should be filled and signed by the candidates in the presence of the Supervisor/Invigilator/Examiner every time a paper test is taken. The&nbsp;Supervisor/Invigilator/Examiner is expected to authenticate the signature of the candidate by placing his/her initials in the appropriate column. Students are requested to hand over the admission card to the Supervisor on the last day of the paper.</p>, instructions=<p><strong><u>Instructions</u></strong></p><ol><li>No candidate shall be admitted to the Examination hall without this card.</li><li>If any candidate loses this admission card, he/she shall obtain a duplicate Admission Card on payment of Rs.150/-</li><li>Every candidate shall produce his/her Identity Card at every paper/Practical Examination he/she sits for.</li><li>Any unauthorized documents, notes &amp; bags should not be taken into the Examinations.</li><li>When unable to be present for any part of the Examination, it should be notified to me&nbsp;<strong><u>immediately in writing</u></strong>&nbsp;. No appeals will be considered later without this timely notification.</li></ol>, provider=<p>Senior Asst. Registrar</p><p>Examination &amp; Student Admission</p>', '2025-03-15 11:34:34'),
+(127, 'Admission created or updated for batch_id=17, generated_date=05.03.2025, transformedSubjects=16:24,20,21,19,18,22,17,25,23, transformedDate=2025:2, description=<p>Candidates are expected to produce this admission card to the Supervisor/Invigilator/Examiner at the Examination Hall. This form&nbsp;&nbsp;&nbsp;should be filled and signed by the candidates in the presence of the Supervisor/Invigilator/Examiner every time a paper test is taken. The&nbsp;Supervisor/Invigilator/Examiner is expected to authenticate the signature of the candidate by placing his/her initials in the appropriate column. Students are requested to hand over the admission card to the Supervisor on the last day of the paper.</p>, instructions=<p><strong><u>Instructions</u></strong></p><ol><li>No candidate shall be admitted to the Examination hall without this card.</li><li>If any candidate loses this admission card, he/she shall obtain a duplicate Admission Card on payment of Rs.150/-</li><li>Every candidate shall produce his/her Identity Card at every paper/Practical Examination he/she sits for.</li><li>Any unauthorized documents, notes &amp; bags should not be taken into the Examinations.</li><li>When unable to be present for any part of the Examination, it should be notified to me&nbsp;<strong><u>immediately in writing</u></strong>&nbsp;. No appeals will be considered later without this timely notification.</li></ol>, provider=<p>Senior Asst. Registrar</p><p>Examination &amp; Student Admission</p>', '2025-03-15 11:35:45'),
+(128, 'Admission created or updated for batch_id=17, generated_date=05.03.2025, transformedSubjects=16:24,20,21,19,18,22,17,25,23, transformedDate=2025:2, description=<p>Candidates are expected to produce this admission card to the Supervisor/Invigilator/Examiner at the Examination Hall. This form&nbsp;&nbsp;&nbsp;should be filled and signed by the candidates in the presence of the Supervisor/Invigilator/Examiner every time a paper test is taken. The&nbsp;Supervisor/Invigilator/Examiner is expected to authenticate the signature of the candidate by placing his/her initials in the appropriate column. Students are requested to hand over the admission card to the Supervisor on the last day of the paper.</p>, instructions=<p><strong><u>Instructions</u></strong></p><ol><li>No candidate shall be admitted to the Examination hall without this card.</li><li>If any candidate loses this admission card, he/she shall obtain a duplicate Admission Card on payment of Rs.150/-</li><li>Every candidate shall produce his/her Identity Card at every paper/Practical Examination he/she sits for.</li><li>Any unauthorized documents, notes &amp; bags should not be taken into the Examinations.</li><li>When unable to be present for any part of the Examination, it should be notified to me&nbsp;<strong><u>immediately in writing</u></strong>&nbsp;. No appeals will be considered later without this timely notification.</li></ol>, provider=<p>Senior Asst. Registrar</p><p>Examination &amp; Student Admission</p>', '2025-03-15 11:43:23'),
+(129, 'Admission created or updated for batch_id=17, generated_date=05.03.2025, transformedSubjects=16:24,20,21,19,18,22,17,25,23, transformedDate=2025:2, description=<p>Candidates are expected to produce this admission card to the Supervisor/Invigilator/Examiner at the Examination Hall. This form&nbsp;&nbsp;&nbsp;should be filled and signed by the candidates in the presence of the Supervisor/Invigilator/Examiner every time a paper test is taken. The&nbsp;Supervisor/Invigilator/Examiner is expected to authenticate the signature of the candidate by placing his/her initials in the appropriate column. Students are requested to hand over the admission card to the Supervisor on the last day of the paper.</p>, instructions=<p><strong><u>Instructions</u></strong></p><ol><li>No candidate shall be admitted to the Examination hall without this card.</li><li>If any candidate loses this admission card, he/she shall obtain a duplicate Admission Card on payment of Rs.150/-</li><li>Every candidate shall produce his/her Identity Card at every paper/Practical Examination he/she sits for.</li><li>Any unauthorized documents, notes &amp; bags should not be taken into the Examinations.</li><li>When unable to be present for any part of the Examination, it should be notified to me&nbsp;<strong><u>immediately in writing</u></strong>&nbsp;. No appeals will be considered later without this timely notification.</li></ol>, provider=<p>Senior Asst. Registrar</p><p>Examination &amp; Student Admission</p>', '2025-03-15 11:54:25'),
+(130, 'Admission created or updated for batch_id=17, generated_date=05.03.2025, transformedSubjects=16:24,20,21,19,18,22,17,25,23, transformedDate=2025:2, description=<p>Candidates are expected to produce this admission card to the Supervisor/Invigilator/Examiner at the Examination Hall. This form&nbsp;&nbsp;&nbsp;should be filled and signed by the candidates in the presence of the Supervisor/Invigilator/Examiner every time a paper test is taken. The&nbsp;Supervisor/Invigilator/Examiner is expected to authenticate the signature of the candidate by placing his/her initials in the appropriate column. Students are requested to hand over the admission card to the Supervisor on the last day of the paper.</p>, instructions=<p><strong><u>Instructions</u></strong></p><ol><li>No candidate shall be admitted to the Examination hall without this card.</li><li>If any candidate loses this admission card, he/she shall obtain a duplicate Admission Card on payment of Rs.150/-</li><li>Every candidate shall produce his/her Identity Card at every paper/Practical Examination he/she sits for.</li><li>Any unauthorized documents, notes &amp; bags should not be taken into the Examinations.</li><li>When unable to be present for any part of the Examination, it should be notified to me&nbsp;<strong><u>immediately in writing</u></strong>&nbsp;. No appeals will be considered later without this timely notification.</li></ol>, provider=<p>Senior Asst. Registrar</p><p>Examination &amp; Student Admission</p>', '2025-03-15 11:57:40'),
+(131, 'Admission created or updated for batch_id=17, generated_date=05.03.2025, transformedSubjects=16:24,20,21,19,18,22,17,25,23, transformedDate=2025:2, description=<p>Candidates are expected to produce this admission card to the Supervisor/Invigilator/Examiner at the Examination Hall. This form&nbsp;&nbsp;&nbsp;should be filled and signed by the candidates in the presence of the Supervisor/Invigilator/Examiner every time a paper test is taken. The&nbsp;Supervisor/Invigilator/Examiner is expected to authenticate the signature of the candidate by placing his/her initials in the appropriate column. Students are requested to hand over the admission card to the Supervisor on the last day of the paper.</p>, instructions=<p><strong><u>Instructions</u></strong></p><ol><li>No candidate shall be admitted to the Examination hall without this card.</li><li>If any candidate loses this admission card, he/she shall obtain a duplicate Admission Card on payment of Rs.150/-</li><li>Every candidate shall produce his/her Identity Card at every paper/Practical Examination he/she sits for.</li><li>Any unauthorized documents, notes &amp; bags should not be taken into the Examinations.</li><li>When unable to be present for any part of the Examination, it should be notified to me&nbsp;<strong><u>immediately in writing</u></strong>&nbsp;. No appeals will be considered later without this timely notification.</li></ol>, provider=<p>Senior Asst. Registrar</p><p>Examination &amp; Student Admission</p>', '2025-03-15 12:05:12'),
+(132, 'Admission created or updated for batch_id=17, generated_date=05.03.2025, transformedSubjects=16:24,20,21,19,18,22,17,25,23, transformedDate=2025:2, description=<p>Candidates are expected to produce this admission card to the Supervisor/Invigilator/Examiner at the Examination Hall. This form&nbsp;&nbsp;&nbsp;should be filled and signed by the candidates in the presence of the Supervisor/Invigilator/Examiner every time a paper test is taken. The&nbsp;Supervisor/Invigilator/Examiner is expected to authenticate the signature of the candidate by placing his/her initials in the appropriate column. Students are requested to hand over the admission card to the Supervisor on the last day of the paper.</p>, instructions=<p><strong><u>Instructions</u></strong></p><ol><li>No candidate shall be admitted to the Examination hall without this card.</li><li>If any candidate loses this admission card, he/she shall obtain a duplicate Admission Card on payment of Rs.150/-</li><li>Every candidate shall produce his/her Identity Card at every paper/Practical Examination he/she sits for.</li><li>Any unauthorized documents, notes &amp; bags should not be taken into the Examinations.</li><li>When unable to be present for any part of the Examination, it should be notified to me&nbsp;<strong><u>immediately in writing</u></strong>&nbsp;. No appeals will be considered later without this timely notification.</li></ol>, provider=<p>Senior Asst. Registrar</p><p>Examination &amp; Student Admission</p>', '2025-03-15 12:06:09'),
+(133, 'Admission created or updated for batch_id=17, generated_date=05.03.2025, transformedSubjects=16:24,20,21,19,18,22,17,25,23, transformedDate=2025:2, description=<p>Candidates are expected to produce this admission card to the Supervisor/Invigilator/Examiner at the Examination Hall. This form&nbsp;&nbsp;&nbsp;should be filled and signed by the candidates in the presence of the Supervisor/Invigilator/Examiner every time a paper test is taken. The&nbsp;Supervisor/Invigilator/Examiner is expected to authenticate the signature of the candidate by placing his/her initials in the appropriate column. Students are requested to hand over the admission card to the Supervisor on the last day of the paper.</p>, instructions=<p><strong><u>Instructions</u></strong></p><ol><li>No candidate shall be admitted to the Examination hall without this card.</li><li>If any candidate loses this admission card, he/she shall obtain a duplicate Admission Card on payment of Rs.150/-</li><li>Every candidate shall produce his/her Identity Card at every paper/Practical Examination he/she sits for.</li><li>Any unauthorized documents, notes &amp; bags should not be taken into the Examinations.</li><li>When unable to be present for any part of the Examination, it should be notified to me&nbsp;<strong><u>immediately in writing</u></strong>&nbsp;. No appeals will be considered later without this timely notification.</li></ol>, provider=<p>Senior Asst. Registrar</p><p>Examination &amp; Student Admission</p>', '2025-03-15 12:07:22'),
+(134, 'Admission created or updated for batch_id=17, generated_date=05.03.2025, transformedSubjects=16:24,20,21,19,18,22,17,25,23, transformedDate=2025:2, description=<p>Candidates are expected to produce this admission card to the Supervisor/Invigilator/Examiner at the Examination Hall. This form&nbsp;&nbsp;&nbsp;should be filled and signed by the candidates in the presence of the Supervisor/Invigilator/Examiner every time a paper test is taken. The&nbsp;Supervisor/Invigilator/Examiner is expected to authenticate the signature of the candidate by placing his/her initials in the appropriate column. Students are requested to hand over the admission card to the Supervisor on the last day of the paper.</p>, instructions=<p><strong><u>Instructions</u></strong></p><ol><li>No candidate shall be admitted to the Examination hall without this card.</li><li>If any candidate loses this admission card, he/she shall obtain a duplicate Admission Card on payment of Rs.150/-</li><li>Every candidate shall produce his/her Identity Card at every paper/Practical Examination he/she sits for.</li><li>Any unauthorized documents, notes &amp; bags should not be taken into the Examinations.</li><li>When unable to be present for any part of the Examination, it should be notified to me&nbsp;<strong><u>immediately in writing</u></strong>&nbsp;. No appeals will be considered later without this timely notification.</li></ol>, provider=<p>Senior Asst. Registrar</p><p>Examination &amp; Student Admission</p>', '2025-03-15 12:08:46'),
+(135, 'Admission created or updated for batch_id=17, generated_date=05.03.2025, transformedSubjects=16:24,20,21,19,18,22,17,25,23, transformedDate=2025:2, description=<p>Candidates are expected to produce this admission card to the Supervisor/Invigilator/Examiner at the Examination Hall. This form&nbsp;&nbsp;&nbsp;should be filled and signed by the candidates in the presence of the Supervisor/Invigilator/Examiner every time a paper test is taken. The&nbsp;Supervisor/Invigilator/Examiner is expected to authenticate the signature of the candidate by placing his/her initials in the appropriate column. Students are requested to hand over the admission card to the Supervisor on the last day of the paper.</p>, instructions=<p><strong><u>Instructions</u></strong></p><ol><li>No candidate shall be admitted to the Examination hall without this card.</li><li>If any candidate loses this admission card, he/she shall obtain a duplicate Admission Card on payment of Rs.150/-</li><li>Every candidate shall produce his/her Identity Card at every paper/Practical Examination he/she sits for.</li><li>Any unauthorized documents, notes &amp; bags should not be taken into the Examinations.</li><li>When unable to be present for any part of the Examination, it should be notified to me&nbsp;<strong><u>immediately in writing</u></strong>&nbsp;. No appeals will be considered later without this timely notification.</li></ol>, provider=<p>Senior Asst. Registrar</p><p>Examination &amp; Student Admission</p>', '2025-03-15 12:09:30'),
+(136, 'Admission created or updated for batch_id=17, generated_date=05.03.2025, transformedSubjects=16:24,20,21,19,18,22,17,25,23, transformedDate=2025:2, description=<p>Candidates are expected to produce this admission card to the Supervisor/Invigilator/Examiner at the Examination Hall. This form&nbsp;&nbsp;&nbsp;should be filled and signed by the candidates in the presence of the Supervisor/Invigilator/Examiner every time a paper test is taken. The&nbsp;Supervisor/Invigilator/Examiner is expected to authenticate the signature of the candidate by placing his/her initials in the appropriate column. Students are requested to hand over the admission card to the Supervisor on the last day of the paper.</p>, instructions=<p><strong><u>Instructions</u></strong></p><ol><li>No candidate shall be admitted to the Examination hall without this card.</li><li>If any candidate loses this admission card, he/she shall obtain a duplicate Admission Card on payment of Rs.150/-</li><li>Every candidate shall produce his/her Identity Card at every paper/Practical Examination he/she sits for.</li><li>Any unauthorized documents, notes &amp; bags should not be taken into the Examinations.</li><li>When unable to be present for any part of the Examination, it should be notified to me&nbsp;<strong><u>immediately in writing</u></strong>&nbsp;. No appeals will be considered later without this timely notification.</li></ol>, provider=<p>Senior Asst. Registrar</p><p>Examination &amp; Student Admission</p>', '2025-03-15 13:01:13'),
+(137, 'Admission created or updated for batch_id=17, generated_date=05.03.2025, transformedSubjects=16:24,20,21,19,18,22,17,25,23, transformedDate=2025:2, description=<p>Candidates are expected to produce this admission card to the Supervisor/Invigilator/Examiner at the Examination Hall. This form&nbsp;&nbsp;&nbsp;should be filled and signed by the candidates in the presence of the Supervisor/Invigilator/Examiner every time a paper test is taken. The&nbsp;Supervisor/Invigilator/Examiner is expected to authenticate the signature of the candidate by placing his/her initials in the appropriate column. Students are requested to hand over the admission card to the Supervisor on the last day of the paper.</p>, instructions=<p><strong><u>Instructions</u></strong></p><ol><li>No candidate shall be admitted to the Examination hall without this card.</li><li>If any candidate loses this admission card, he/she shall obtain a duplicate Admission Card on payment of Rs.150/-</li><li>Every candidate shall produce his/her Identity Card at every paper/Practical Examination he/she sits for.</li><li>Any unauthorized documents, notes &amp; bags should not be taken into the Examinations.</li><li>When unable to be present for any part of the Examination, it should be notified to me&nbsp;<strong><u>immediately in writing</u></strong>&nbsp;. No appeals will be considered later without this timely notification.</li></ol>, provider=<p>Senior Asst. Registrar</p><p>Examination &amp; Student Admission</p>', '2025-03-15 13:11:18'),
+(138, 'Admission created or updated for batch_id=17, generated_date=05.03.2025, transformedSubjects=16:24,20,21,19,18,22,17,25,23, transformedDate=2025:2, description=<p>Candidates are expected to produce this admission card to the Supervisor/Invigilator/Examiner at the Examination Hall. This form&nbsp;&nbsp;&nbsp;should be filled and signed by the candidates in the presence of the Supervisor/Invigilator/Examiner every time a paper test is taken. The&nbsp;Supervisor/Invigilator/Examiner is expected to authenticate the signature of the candidate by placing his/her initials in the appropriate column. Students are requested to hand over the admission card to the Supervisor on the last day of the paper.</p>, instructions=<p><strong><u>Instructions</u></strong></p><ol><li>No candidate shall be admitted to the Examination hall without this card.</li><li>If any candidate loses this admission card, he/she shall obtain a duplicate Admission Card on payment of Rs.150/-</li><li>Every candidate shall produce his/her Identity Card at every paper/Practical Examination he/she sits for.</li><li>Any unauthorized documents, notes &amp; bags should not be taken into the Examinations.</li><li>When unable to be present for any part of the Examination, it should be notified to me&nbsp;<strong><u>immediately in writing</u></strong>&nbsp;. No appeals will be considered later without this timely notification.</li></ol>, provider=<p>Senior Asst. Registrar</p><p>Examination &amp; Student Admission</p>', '2025-03-15 13:17:29'),
+(139, 'Admission created or updated for batch_id=17, generated_date=05.03.2025, transformedSubjects=16:24,20,21,19,18,22,17,25,23, transformedDate=2025:2, description=<p>Candidates are expected to produce this admission card to the Supervisor/Invigilator/Examiner at the Examination Hall. This form&nbsp;&nbsp;&nbsp;should be filled and signed by the candidates in the presence of the Supervisor/Invigilator/Examiner every time a paper test is taken. The&nbsp;Supervisor/Invigilator/Examiner is expected to authenticate the signature of the candidate by placing his/her initials in the appropriate column. Students are requested to hand over the admission card to the Supervisor on the last day of the paper.</p>, instructions=<p><strong><u>Instructions</u></strong></p><ol><li>No candidate shall be admitted to the Examination hall without this card.</li><li>If any candidate loses this admission card, he/she shall obtain a duplicate Admission Card on payment of Rs.150/-</li><li>Every candidate shall produce his/her Identity Card at every paper/Practical Examination he/she sits for.</li><li>Any unauthorized documents, notes &amp; bags should not be taken into the Examinations.</li><li>When unable to be present for any part of the Examination, it should be notified to me&nbsp;<strong><u>immediately in writing</u></strong>&nbsp;. No appeals will be considered later without this timely notification.</li></ol>, provider=<p>Senior Asst. Registrar</p><p>Examination &amp; Student Admission</p>', '2025-03-15 13:19:17'),
+(140, 'Admission created or updated for batch_id=17, generated_date=05.03.2025, transformedSubjects=16:24,20,21,19,18,22,17,25,23, transformedDate=2025:2, description=<p>Candidates are expected to produce this admission card to the Supervisor/Invigilator/Examiner at the Examination Hall. This form&nbsp;&nbsp;&nbsp;should be filled and signed by the candidates in the presence of the Supervisor/Invigilator/Examiner every time a paper test is taken. The&nbsp;Supervisor/Invigilator/Examiner is expected to authenticate the signature of the candidate by placing his/her initials in the appropriate column. Students are requested to hand over the admission card to the Supervisor on the last day of the paper.</p>, instructions=<p><strong><u>Instructions</u></strong></p><ol><li>No candidate shall be admitted to the Examination hall without this card.</li><li>If any candidate loses this admission card, he/she shall obtain a duplicate Admission Card on payment of Rs.150/-</li><li>Every candidate shall produce his/her Identity Card at every paper/Practical Examination he/she sits for.</li><li>Any unauthorized documents, notes &amp; bags should not be taken into the Examinations.</li><li>When unable to be present for any part of the Examination, it should be notified to me&nbsp;<strong><u>immediately in writing</u></strong>&nbsp;. No appeals will be considered later without this timely notification.</li></ol>, provider=<p>Senior Asst. Registrar</p><p>Examination &amp; Student Admission</p>', '2025-03-15 13:58:00'),
+(141, 'Admission created or updated for batch_id=17, generated_date=05.03.2025, transformedSubjects=16:24,20,21,19,18,22,17,25,23, transformedDate=2025:2, description=<p>Candidates are expected to produce this admission card to the Supervisor/Invigilator/Examiner at the Examination Hall. This form&nbsp;&nbsp;&nbsp;should be filled and signed by the candidates in the presence of the Supervisor/Invigilator/Examiner every time a paper test is taken. The&nbsp;Supervisor/Invigilator/Examiner is expected to authenticate the signature of the candidate by placing his/her initials in the appropriate column. Students are requested to hand over the admission card to the Supervisor on the last day of the paper.</p>, instructions=<p><strong><u>Instructions</u></strong></p><ol><li>No candidate shall be admitted to the Examination hall without this card.</li><li>If any candidate loses this admission card, he/she shall obtain a duplicate Admission Card on payment of Rs.150/-</li><li>Every candidate shall produce his/her Identity Card at every paper/Practical Examination he/she sits for.</li><li>Any unauthorized documents, notes &amp; bags should not be taken into the Examinations.</li><li>When unable to be present for any part of the Examination, it should be notified to me&nbsp;<strong><u>immediately in writing</u></strong>&nbsp;. No appeals will be considered later without this timely notification.</li></ol>, provider=<p>Senior Asst. Registrar</p><p>Examination &amp; Student Admission</p>', '2025-03-15 14:10:23'),
+(142, 'Admission created or updated for batch_id=17, generated_date=05.03.2025, transformedSubjects=16:24,20,21,19,18,22,17,25,23, transformedDate=2025:2, description=<p>Candidates are expected to produce this admission card to the Supervisor/Invigilator/Examiner at the Examination Hall. This form&nbsp;&nbsp;&nbsp;should be filled and signed by the candidates in the presence of the Supervisor/Invigilator/Examiner every time a paper test is taken. The&nbsp;Supervisor/Invigilator/Examiner is expected to authenticate the signature of the candidate by placing his/her initials in the appropriate column. Students are requested to hand over the admission card to the Supervisor on the last day of the paper.</p>, instructions=<p><strong><u>Instructions</u></strong></p><ol><li>No candidate shall be admitted to the Examination hall without this card.</li><li>If any candidate loses this admission card, he/she shall obtain a duplicate Admission Card on payment of Rs.150/-</li><li>Every candidate shall produce his/her Identity Card at every paper/Practical Examination he/she sits for.</li><li>Any unauthorized documents, notes &amp; bags should not be taken into the Examinations.</li><li>When unable to be present for any part of the Examination, it should be notified to me&nbsp;<strong><u>immediately in writing</u></strong>&nbsp;. No appeals will be considered later without this timely notification.</li></ol>, provider=<p>Senior Asst. Registrar</p><p>Examination &amp; Student Admission</p>', '2025-03-15 14:13:07');
+INSERT INTO `admin_log` (`id`, `description`, `date_time`) VALUES
+(143, 'Admission created or updated for batch_id=17, generated_date=05.03.2025, transformedSubjects=16:24,20,21,19,18,22,17,25,23, transformedDate=2025:2, description=<p>Candidates are expected to produce this admission card to the Supervisor/Invigilator/Examiner at the Examination Hall. This form&nbsp;&nbsp;&nbsp;should be filled and signed by the candidates in the presence of the Supervisor/Invigilator/Examiner every time a paper test is taken. The&nbsp;Supervisor/Invigilator/Examiner is expected to authenticate the signature of the candidate by placing his/her initials in the appropriate column. Students are requested to hand over the admission card to the Supervisor on the last day of the paper.</p>, instructions=<p><strong><u>Instructions</u></strong></p><ol><li>No candidate shall be admitted to the Examination hall without this card.</li><li>If any candidate loses this admission card, he/she shall obtain a duplicate Admission Card on payment of Rs.150/-</li><li>Every candidate shall produce his/her Identity Card at every paper/Practical Examination he/she sits for.</li><li>Any unauthorized documents, notes &amp; bags should not be taken into the Examinations.</li><li>When unable to be present for any part of the Examination, it should be notified to me&nbsp;<strong><u>immediately in writing</u></strong>&nbsp;. No appeals will be considered later without this timely notification.</li></ol>, provider=<p>Senior Asst. Registrar</p><p>Examination &amp; Student Admission</p>', '2025-03-15 14:15:57'),
+(144, 'Admission created or updated for batch_id=17, generated_date=05.03.2025, transformedSubjects=16:24,20,21,19,18,22,17,25,23, transformedDate=2025:2, description=<p>Candidates are expected to produce this admission card to the Supervisor/Invigilator/Examiner at the Examination Hall. This form&nbsp;&nbsp;&nbsp;should be filled and signed by the candidates in the presence of the Supervisor/Invigilator/Examiner every time a paper test is taken. The&nbsp;Supervisor/Invigilator/Examiner is expected to authenticate the signature of the candidate by placing his/her initials in the appropriate column. Students are requested to hand over the admission card to the Supervisor on the last day of the paper.</p>, instructions=<p><strong><u>Instructions</u></strong></p><ol><li>No candidate shall be admitted to the Examination hall without this card.</li><li>If any candidate loses this admission card, he/she shall obtain a duplicate Admission Card on payment of Rs.150/-</li><li>Every candidate shall produce his/her Identity Card at every paper/Practical Examination he/she sits for.</li><li>Any unauthorized documents, notes &amp; bags should not be taken into the Examinations.</li><li>When unable to be present for any part of the Examination, it should be notified to me&nbsp;<strong><u>immediately in writing</u></strong>&nbsp;. No appeals will be considered later without this timely notification.</li></ol>, provider=<p>Senior Asst. Registrar</p><p>Examination &amp; Student Admission</p>', '2025-03-15 14:29:43'),
+(145, 'Admission created or updated for batch_id=17, generated_date=05.03.2025, transformedSubjects=16:24,20,21,19,18,22,17,25,23, transformedDate=2025:2, description=<p>Candidates are expected to produce this admission card to the Supervisor/Invigilator/Examiner at the Examination Hall. This form&nbsp;&nbsp;&nbsp;should be filled and signed by the candidates in the presence of the Supervisor/Invigilator/Examiner every time a paper test is taken. The&nbsp;Supervisor/Invigilator/Examiner is expected to authenticate the signature of the candidate by placing his/her initials in the appropriate column. Students are requested to hand over the admission card to the Supervisor on the last day of the paper.</p>, instructions=<p><strong><u>Instructions</u></strong></p><ol><li>No candidate shall be admitted to the Examination hall without this card.</li><li>If any candidate loses this admission card, he/she shall obtain a duplicate Admission Card on payment of Rs.150/-</li><li>Every candidate shall produce his/her Identity Card at every paper/Practical Examination he/she sits for.</li><li>Any unauthorized documents, notes &amp; bags should not be taken into the Examinations.</li><li>When unable to be present for any part of the Examination, it should be notified to me&nbsp;<strong><u>immediately in writing</u></strong>&nbsp;. No appeals will be considered later without this timely notification.</li></ol>, provider=<p>Senior Asst. Registrar</p><p>Examination &amp; Student Admission</p>', '2025-03-15 14:43:36'),
+(146, 'Admission created or updated for batch_id=17, generated_date=05.03.2025, transformedSubjects=16:24,20,21,19,18,22,17,25,23, transformedDate=2025:2, description=<p>Candidates are expected to produce this admission card to the Supervisor/Invigilator/Examiner at the Examination Hall. This form&nbsp;&nbsp;&nbsp;should be filled and signed by the candidates in the presence of the Supervisor/Invigilator/Examiner every time a paper test is taken. The&nbsp;Supervisor/Invigilator/Examiner is expected to authenticate the signature of the candidate by placing his/her initials in the appropriate column. Students are requested to hand over the admission card to the Supervisor on the last day of the paper.</p>, instructions=<p><strong><u>Instructions</u></strong></p><ol><li>No candidate shall be admitted to the Examination hall without this card.</li><li>If any candidate loses this admission card, he/she shall obtain a duplicate Admission Card on payment of Rs.150/-</li><li>Every candidate shall produce his/her Identity Card at every paper/Practical Examination he/she sits for.</li><li>Any unauthorized documents, notes &amp; bags should not be taken into the Examinations.</li><li>When unable to be present for any part of the Examination, it should be notified to me&nbsp;<strong><u>immediately in writing</u></strong>&nbsp;. No appeals will be considered later without this timely notification.</li></ol>, provider=<p>Senior Asst. Registrar</p><p>Examination &amp; Student Admission</p>', '2025-03-15 14:58:52'),
+(147, 'Admission created or updated for batch_id=17, generated_date=05.03.2025, transformedSubjects=16:24,20,21,19,18,22,17,25,23, transformedDate=2025:2, description=<p>Candidates are expected to produce this admission card to the Supervisor/Invigilator/Examiner at the Examination Hall. This form&nbsp;&nbsp;&nbsp;should be filled and signed by the candidates in the presence of the Supervisor/Invigilator/Examiner every time a paper test is taken. The&nbsp;Supervisor/Invigilator/Examiner is expected to authenticate the signature of the candidate by placing his/her initials in the appropriate column. Students are requested to hand over the admission card to the Supervisor on the last day of the paper.</p>, instructions=<p><strong><u>Instructions</u></strong></p><ol><li>No candidate shall be admitted to the Examination hall without this card.</li><li>If any candidate loses this admission card, he/she shall obtain a duplicate Admission Card on payment of Rs.150/-</li><li>Every candidate shall produce his/her Identity Card at every paper/Practical Examination he/she sits for.</li><li>Any unauthorized documents, notes &amp; bags should not be taken into the Examinations.</li><li>When unable to be present for any part of the Examination, it should be notified to me&nbsp;<strong><u>immediately in writing</u></strong>&nbsp;. No appeals will be considered later without this timely notification.</li></ol>, provider=<p>Senior Asst. Registrar</p><p>Examination &amp; Student Admission</p>', '2025-03-15 15:01:46'),
+(148, 'Admission created or updated for batch_id=17, generated_date=05.03.2025, transformedSubjects=16:24,20,21,19,18,22,17,25,23, transformedDate=2025:2, description=<p>Candidates are expected to produce this admission card to the Supervisor/Invigilator/Examiner at the Examination Hall. This form&nbsp;&nbsp;&nbsp;should be filled and signed by the candidates in the presence of the Supervisor/Invigilator/Examiner every time a paper test is taken. The&nbsp;Supervisor/Invigilator/Examiner is expected to authenticate the signature of the candidate by placing his/her initials in the appropriate column. Students are requested to hand over the admission card to the Supervisor on the last day of the paper.</p>, instructions=<p><strong><u>Instructions</u></strong></p><ol><li>No candidate shall be admitted to the Examination hall without this card.</li><li>If any candidate loses this admission card, he/she shall obtain a duplicate Admission Card on payment of Rs.150/-</li><li>Every candidate shall produce his/her Identity Card at every paper/Practical Examination he/she sits for.</li><li>Any unauthorized documents, notes &amp; bags should not be taken into the Examinations.</li><li>When unable to be present for any part of the Examination, it should be notified to me&nbsp;<strong><u>immediately in writing</u></strong>&nbsp;. No appeals will be considered later without this timely notification.</li></ol>, provider=<p>Senior Asst. Registrar</p><p>Examination &amp; Student Admission</p>', '2025-03-15 15:11:30'),
+(149, 'Admission created or updated for batch_id=17, generated_date=05.03.2025, transformedSubjects=16:24,20,21,19,18,22,17,25,23, transformedDate=2025:2, description=<p>Candidates are expected to produce this admission card to the Supervisor/Invigilator/Examiner at the Examination Hall. This form&nbsp;&nbsp;&nbsp;should be filled and signed by the candidates in the presence of the Supervisor/Invigilator/Examiner every time a paper test is taken. The&nbsp;Supervisor/Invigilator/Examiner is expected to authenticate the signature of the candidate by placing his/her initials in the appropriate column. Students are requested to hand over the admission card to the Supervisor on the last day of the paper.</p>, instructions=<p><strong><u>Instructions</u></strong></p><ol><li>No candidate shall be admitted to the Examination hall without this card.</li><li>If any candidate loses this admission card, he/she shall obtain a duplicate Admission Card on payment of Rs.150/-</li><li>Every candidate shall produce his/her Identity Card at every paper/Practical Examination he/she sits for.</li><li>Any unauthorized documents, notes &amp; bags should not be taken into the Examinations.</li><li>When unable to be present for any part of the Examination, it should be notified to me&nbsp;<strong><u>immediately in writing</u></strong>&nbsp;. No appeals will be considered later without this timely notification.</li></ol>, provider=<p>Senior Asst. Registrar</p><p>Examination &amp; Student Admission</p>', '2025-03-15 15:16:16'),
+(150, 'Admission created or updated for batch_id=17, generated_date=05.03.2025, transformedSubjects=16:24,20,21,19,18,22,17,25,23, transformedDate=2025:2, description=<p>Candidates are expected to produce this admission card to the Supervisor/Invigilator/Examiner at the Examination Hall. This form&nbsp;&nbsp;&nbsp;should be filled and signed by the candidates in the presence of the Supervisor/Invigilator/Examiner every time a paper test is taken. The&nbsp;Supervisor/Invigilator/Examiner is expected to authenticate the signature of the candidate by placing his/her initials in the appropriate column. Students are requested to hand over the admission card to the Supervisor on the last day of the paper.</p>, instructions=<p><strong><u>Instructions</u></strong></p><ol><li>No candidate shall be admitted to the Examination hall without this card.</li><li>If any candidate loses this admission card, he/she shall obtain a duplicate Admission Card on payment of Rs.150/-</li><li>Every candidate shall produce his/her Identity Card at every paper/Practical Examination he/she sits for.</li><li>Any unauthorized documents, notes &amp; bags should not be taken into the Examinations.</li><li>When unable to be present for any part of the Examination, it should be notified to me&nbsp;<strong><u>immediately in writing</u></strong>&nbsp;. No appeals will be considered later without this timely notification.</li></ol>, provider=<p>Senior Asst. Registrar</p><p>Examination &amp; Student Admission</p>', '2025-03-15 15:18:01'),
+(151, 'Admission created or updated for batch_id=17, generated_date=05.03.2025, transformedSubjects=16:24,20,21,19,18,22,17,25,23, transformedDate=2025:2;3,2026:0, description=<p>Candidates are expected to produce this admission card to the Supervisor/Invigilator/Examiner at the Examination Hall. This form&nbsp;&nbsp;&nbsp;should be filled and signed by the candidates in the presence of the Supervisor/Invigilator/Examiner every time a paper test is taken. The&nbsp;Supervisor/Invigilator/Examiner is expected to authenticate the signature of the candidate by placing his/her initials in the appropriate column. Students are requested to hand over the admission card to the Supervisor on the last day of the paper.</p>, instructions=<p><strong><u>Instructions</u></strong></p><ol><li>No candidate shall be admitted to the Examination hall without this card.</li><li>If any candidate loses this admission card, he/she shall obtain a duplicate Admission Card on payment of Rs.150/-</li><li>Every candidate shall produce his/her Identity Card at every paper/Practical Examination he/she sits for.</li><li>Any unauthorized documents, notes &amp; bags should not be taken into the Examinations.</li><li>When unable to be present for any part of the Examination, it should be notified to me&nbsp;<strong><u>immediately in writing</u></strong>&nbsp;. No appeals will be considered later without this timely notification.</li></ol>, provider=<p>Senior Asst. Registrar</p><p>Examination &amp; Student Admission</p>', '2025-03-15 15:18:42'),
+(152, 'Admission created or updated for batch_id=17, generated_date=05.03.2025, transformedSubjects=16:24,20,21,19,18,22,17,25,23, transformedDate=2025:2;3,2026:0, description=<p>Candidates are expected to produce this admission card to the Supervisor/Invigilator/Examiner at the Examination Hall. This form&nbsp;&nbsp;&nbsp;should be filled and signed by the candidates in the presence of the Supervisor/Invigilator/Examiner every time a paper test is taken. The&nbsp;Supervisor/Invigilator/Examiner is expected to authenticate the signature of the candidate by placing his/her initials in the appropriate column. Students are requested to hand over the admission card to the Supervisor on the last day of the paper.</p>, instructions=<p><strong><u>Instructions</u></strong></p><ol><li>No candidate shall be admitted to the Examination hall without this card.</li><li>If any candidate loses this admission card, he/she shall obtain a duplicate Admission Card on payment of Rs.150/-</li><li>Every candidate shall produce his/her Identity Card at every paper/Practical Examination he/she sits for.</li><li>Any unauthorized documents, notes &amp; bags should not be taken into the Examinations.</li><li>When unable to be present for any part of the Examination, it should be notified to me&nbsp;<strong><u>immediately in writing</u></strong>&nbsp;. No appeals will be considered later without this timely notification.</li></ol>, provider=<p>Senior Asst. Registrar</p><p>Examination &amp; Student Admission</p>', '2025-03-15 15:19:53'),
+(153, 'Admission created or updated for batch_id=17, generated_date=05.03.2025, transformedSubjects=16:24,20,21,19,18,22,17,25,23, transformedDate=2025:2;3,2026:0, description=<p>Candidates are expected to produce this admission card to the Supervisor/Invigilator/Examiner at the Examination Hall. This form&nbsp;&nbsp;&nbsp;should be filled and signed by the candidates in the presence of the Supervisor/Invigilator/Examiner every time a paper test is taken. The&nbsp;Supervisor/Invigilator/Examiner is expected to authenticate the signature of the candidate by placing his/her initials in the appropriate column. Students are requested to hand over the admission card to the Supervisor on the last day of the paper.</p>, instructions=<p><strong><u>Instructions</u></strong></p><ol><li>No candidate shall be admitted to the Examination hall without this card.</li><li>If any candidate loses this admission card, he/she shall obtain a duplicate Admission Card on payment of Rs.150/-</li><li>Every candidate shall produce his/her Identity Card at every paper/Practical Examination he/she sits for.</li><li>Any unauthorized documents, notes &amp; bags should not be taken into the Examinations.</li><li>When unable to be present for any part of the Examination, it should be notified to me&nbsp;<strong><u>immediately in writing</u></strong>&nbsp;. No appeals will be considered later without this timely notification.</li></ol>, provider=<p>Senior Asst. Registrar</p><p>Examination &amp; Student Admission</p>', '2025-03-15 15:23:56'),
+(154, 'Attendance created or updated for batch_id=17, transformedDate=2025:2, description=<p>Supervisors are kindly requested to mark absentees clearly \"ABSENT\" and \"✔\" those Present. One copy is to be returned under separate cover to the Deputy Registrar and one to be enclosed in the relevant packet of answer script, when answer scripts separately for each of a paper it is necessary to enclose a copy each of the attendance list in each packet.</p>', '2025-03-15 15:26:52'),
+(155, 'Attendance created or updated for batch_id=17, transformedDate=2025:2, description=<p>Supervisors are kindly requested to mark absentees clearly \"ABSENT\" and \"✔\" those Present. One copy is to be returned under separate cover to the Deputy Registrar and one to be enclosed in the relevant packet of answer script, when answer scripts separately for each of a paper it is necessary to enclose a copy each of the attendance list in each packet.</p>', '2025-03-15 15:32:45'),
+(156, 'Attendance created or updated for batch_id=17, transformedDate=2025:2, description=<p>Supervisors are kindly requested to mark absentees clearly \"ABSENT\" and \"✔\" those Present. One copy is to be returned under separate cover to the Deputy Registrar and one to be enclosed in the relevant packet of answer script, when answer scripts separately for each of a paper it is necessary to enclose a copy each of the attendance list in each packet.</p>', '2025-03-15 15:34:34'),
+(157, 'Attendance created or updated for batch_id=17, transformedDate=2025:2, description=<p>Supervisors are kindly requested to mark absentees clearly \"ABSENT\" and \"✔\" those Present. One copy is to be returned under separate cover to the Deputy Registrar and one to be enclosed in the relevant packet of answer script, when answer scripts separately for each of a paper it is necessary to enclose a copy each of the attendance list in each packet.</p>', '2025-03-15 15:35:31'),
+(158, 'Attendance created or updated for batch_id=17, transformedDate=2025:2, description=<p>Supervisors are kindly requested to mark absentees clearly \"ABSENT\" and \"✔\" those Present. One copy is to be returned under separate cover to the Deputy Registrar and one to be enclosed in the relevant packet of answer script, when answer scripts separately for each of a paper it is necessary to enclose a copy each of the attendance list in each packet.</p>', '2025-03-15 15:36:18'),
+(159, 'Admission created or updated for batch_id=17, generated_date=05.03.2025, transformedSubjects=16:24,20,21,19,18,22,17,25,23, transformedDate=2025:2;3,2026:0, description=<p>Candidates are expected to produce this admission card to the Supervisor/Invigilator/Examiner at the Examination Hall. This form&nbsp;&nbsp;&nbsp;should be filled and signed by the candidates in the presence of the Supervisor/Invigilator/Examiner every time a paper test is taken. The&nbsp;Supervisor/Invigilator/Examiner is expected to authenticate the signature of the candidate by placing his/her initials in the appropriate column. Students are requested to hand over the admission card to the Supervisor on the last day of the paper.</p>, instructions=<p><strong><u>Instructions</u></strong></p><ol><li>No candidate shall be admitted to the Examination hall without this card.</li><li>If any candidate loses this admission card, he/she shall obtain a duplicate Admission Card on payment of Rs.150/-</li><li>Every candidate shall produce his/her Identity Card at every paper/Practical Examination he/she sits for.</li><li>Any unauthorized documents, notes &amp; bags should not be taken into the Examinations.</li><li>When unable to be present for any part of the Examination, it should be notified to me&nbsp;<strong><u>immediately in writing</u></strong>&nbsp;. No appeals will be considered later without this timely notification.</li></ol>, provider=<p>Senior Asst. Registrar</p><p>Examination &amp; Student Admission</p>', '2025-03-15 15:39:55'),
+(160, 'Attendance created or updated for batch_id=17, transformedDate=2025:2, description=<p>Supervisors are kindly requested to mark absentees clearly \"ABSENT\" and \"✔\" those Present. One copy is to be returned under separate cover to the Deputy Registrar and one to be enclosed in the relevant packet of answer script, when answer scripts separately for each of a paper it is necessary to enclose a copy each of the attendance list in each packet.</p>', '2025-03-15 15:47:19'),
+(161, 'Attendance created or updated for batch_id=17, transformedDate=2025:2, description=<p>Supervisors are kindly requested to mark absentees clearly \"ABSENT\" and \"✔\" those Present. One copy is to be returned under separate cover to the Deputy Registrar and one to be enclosed in the relevant packet of answer script, when answer scripts separately for each of a paper it is necessary to enclose a copy each of the attendance list in each packet.</p>', '2025-03-15 15:50:20'),
+(162, 'Attendance created or updated for batch_id=17, transformedDate=2025:2, description=<p>Supervisors are kindly requested to mark absentees clearly \"ABSENT\" and \"✔\" those Present. One copy is to be returned under separate cover to the Deputy Registrar and one to be enclosed in the relevant packet of answer script, when answer scripts separately for each of a paper it is necessary to enclose a copy each of the attendance list in each packet.</p>', '2025-03-15 15:51:30'),
+(163, 'Attendance created or updated for batch_id=17, transformedDate=2025:2, description=<p>Supervisors are kindly requested to mark absentees clearly \"ABSENT\" and \"✔\" those Present. One copy is to be returned under separate cover to the Deputy Registrar and one to be enclosed in the relevant packet of answer script, when answer scripts separately for each of a paper it is necessary to enclose a copy each of the attendance list in each packet.</p>', '2025-03-15 16:05:01'),
+(164, 'Attendance created or updated for batch_id=17, transformedDate=2025:2, description=<p>Supervisors are kindly requested to mark absentees clearly \"ABSENT\" and \"✔\" those Present. One copy is to be returned under separate cover to the Deputy Registrar and one to be enclosed in the relevant packet of answer script, when answer scripts separately for each of a paper it is necessary to enclose a copy each of the attendance list in each packet.</p>', '2025-03-15 16:06:21'),
+(165, 'Attendance created or updated for batch_id=17, transformedDate=2025:2, description=<p>Supervisors are kindly requested to mark absentees clearly \"ABSENT\" and \"✔\" those Present. One copy is to be returned under separate cover to the Deputy Registrar and one to be enclosed in the relevant packet of answer script, when answer scripts separately for each of a paper it is necessary to enclose a copy each of the attendance list in each packet.</p>', '2025-03-15 16:06:58'),
+(166, 'Attendance created or updated for batch_id=17, transformedDate=2025:2, description=<p>Supervisors are kindly requested to mark absentees clearly \"ABSENT\" and \"✔\" those Present. One copy is to be returned under separate cover to the Deputy Registrar and one to be enclosed in the relevant packet of answer script, when answer scripts separately for each of a paper it is necessary to enclose a copy each of the attendance list in each packet.</p>', '2025-03-15 16:09:28'),
+(167, 'Attendance created or updated for batch_id=17, transformedDate=2025:2, description=<p>Supervisors are kindly requested to mark absentees clearly \"ABSENT\" and \"✔\" those Present. One copy is to be returned under separate cover to the Deputy Registrar and one to be enclosed in the relevant packet of answer script, when answer scripts separately for each of a paper it is necessary to enclose a copy each of the attendance list in each packet.</p>', '2025-03-15 16:11:00'),
+(168, 'Attendance created or updated for batch_id=17, transformedDate=2025:2, description=<p>Supervisors are kindly requested to mark absentees clearly \"ABSENT\" and \"✔\" those Present. One copy is to be returned under separate cover to the Deputy Registrar and one to be enclosed in the relevant packet of answer script, when answer scripts separately for each of a paper it is necessary to enclose a copy each of the attendance list in each packet.</p>', '2025-03-15 16:30:56'),
+(169, 'Attendance created or updated for batch_id=17, transformedDate=2025:2, description=<p>Supervisors are kindly requested to mark absentees clearly \"ABSENT\" and \"✔\" those Present. One copy is to be returned under separate cover to the Deputy Registrar and one to be enclosed in the relevant packet of answer script, when answer scripts separately for each of a paper it is necessary to enclose a copy each of the attendance list in each packet.</p>', '2025-03-15 16:34:57'),
+(170, 'Attendance created or updated for batch_id=17, transformedDate=2025:2, description=<p>Supervisors are kindly requested to mark absentees clearly \"ABSENT\" and \"✔\" those Present. One copy is to be returned under separate cover to the Deputy Registrar and one to be enclosed in the relevant packet of answer script, when answer scripts separately for each of a paper it is necessary to enclose a copy each of the attendance list in each packet.</p>', '2025-03-15 16:36:32'),
+(171, 'Attendance created or updated for batch_id=17, transformedDate=2025:2, description=<p>Supervisors are kindly requested to mark absentees clearly \"ABSENT\" and \"✔\" those Present. One copy is to be returned under separate cover to the Deputy Registrar and one to be enclosed in the relevant packet of answer script, when answer scripts separately for each of a paper it is necessary to enclose a copy each of the attendance list in each packet.</p>', '2025-03-15 16:37:56'),
+(172, 'Attendance created or updated for batch_id=17, transformedDate=2025:2, description=<p>Supervisors are kindly requested to mark absentees clearly \"ABSENT\" and \"✔\" those Present. One copy is to be returned under separate cover to the Deputy Registrar and one to be enclosed in the relevant packet of answer script, when answer scripts separately for each of a paper it is necessary to enclose a copy each of the attendance list in each packet.</p>', '2025-03-15 16:46:30'),
+(173, 'Attendance created or updated for batch_id=17, transformedDate=2025:2, description=<p>Supervisors are kindly requested to mark absentees clearly \"ABSENT\" and \"✔\" those Present. One copy is to be returned under separate cover to the Deputy Registrar and one to be enclosed in the relevant packet of answer script, when answer scripts separately for each of a paper it is necessary to enclose a copy each of the attendance list in each packet.</p>', '2025-03-15 16:48:16'),
+(174, 'Attendance created or updated for batch_id=17, transformedDate=2025:2, description=<p>Supervisors are kindly requested to mark absentees clearly \"ABSENT\" and \"✔\" those Present. One copy is to be returned under separate cover to the Deputy Registrar and one to be enclosed in the relevant packet of answer script, when answer scripts separately for each of a paper it is necessary to enclose a copy each of the attendance list in each packet.</p>', '2025-03-15 16:52:55'),
+(175, 'Attendance created or updated for batch_id=17, transformedDate=2025:2, description=<p>Supervisors are kindly requested to mark absentees clearly \"ABSENT\" and \"✔\" those Present. One copy is to be returned under separate cover to the Deputy Registrar and one to be enclosed in the relevant packet of answer script, when answer scripts separately for each of a paper it is necessary to enclose a copy each of the attendance list in each packet.</p>', '2025-03-15 16:53:52'),
+(176, 'Attendance created or updated for batch_id=17, transformedDate=2025:2, description=<p>Supervisors are kindly requested to mark absentees clearly \"ABSENT\" and \"✔\" those Present. One copy is to be returned under separate cover to the Deputy Registrar and one to be enclosed in the relevant packet of answer script, when answer scripts separately for each of a paper it is necessary to enclose a copy each of the attendance list in each packet.</p>', '2025-03-15 16:54:23'),
+(177, 'Attendance created or updated for batch_id=17, transformedDate=2025:2, description=<p>Supervisors are kindly requested to mark absentees clearly \"ABSENT\" and \"✔\" those Present. One copy is to be returned under separate cover to the Deputy Registrar and one to be enclosed in the relevant packet of answer script, when answer scripts separately for each of a paper it is necessary to enclose a copy each of the attendance list in each packet.</p>', '2025-03-15 16:55:22'),
+(178, 'Batch updated with batch_id=17, application_open=2025-03-04T14:52, sub_ids=16,17,18,19,20,21,22,23,24,25, m_ids=1,2,1,4,5,1,2,1,4,5', '2025-03-16 09:23:10'),
+(179, 'Batch time period inserted or updated for batch_id=17 to students_end=2025-03-07T13:35, lecturers_end=2025-02-28T17:33, hod_end=2025-03-06T12:36, dean_end=2025-03-07T17:06', '2025-03-16 09:23:11'),
+(180, 'Batch time period inserted or updated for batch_id=17 to students_end=2025-03-07T13:35, lecturers_end=2025-02-28T17:33, hod_end=2025-03-06T12:36, dean_end=2025-03-07T17:06', '2025-03-16 09:41:26'),
+(181, 'Batch time period inserted or updated for batch_id=17 to students_end=2025-03-07T13:35, lecturers_end=2025-02-28T17:33, hod_end=2025-03-06T12:36, dean_end=2025-03-07T17:06', '2025-03-16 09:42:14'),
+(182, 'Batch time period inserted or updated for batch_id=17 to students_end=2025-03-07T13:35, lecturers_end=2025-02-28T17:33, hod_end=2025-03-06T12:36, dean_end=2025-03-07T17:06', '2025-03-16 09:43:50'),
+(183, 'Batch time period inserted or updated for batch_id=17 to students_end=2025-03-07T13:35, lecturers_end=2025-02-28T17:33, hod_end=2025-03-06T12:36, dean_end=2025-03-07T17:06', '2025-03-16 09:44:58'),
+(184, 'Batch time period inserted or updated for batch_id=17 to students_end=2025-03-07T13:35, lecturers_end=2025-02-28T17:33, hod_end=2025-03-06T12:36, dean_end=2025-03-07T17:06', '2025-03-16 09:45:26'),
+(185, 'Batch updated with batch_id=17, application_open=2025-03-19T14:52, sub_ids=16,17,18,19,20,21,22,23,24,25, m_ids=1,2,1,4,5,1,2,1,4,5', '2025-03-16 09:49:32'),
+(186, 'Batch time period inserted or updated for batch_id=17 to students_end=2025-03-07T13:35, lecturers_end=2025-02-28T17:33, hod_end=2025-03-06T12:36, dean_end=2025-03-07T17:06', '2025-03-16 09:49:32'),
+(187, 'Batch time period inserted or updated for batch_id=17 to students_end=2025-03-07T13:35, lecturers_end=2025-02-28T17:33, hod_end=2025-03-06T12:36, dean_end=2025-03-07T17:06', '2025-03-16 09:49:59'),
+(188, 'Batch updated with batch_id=17, application_open=2025-03-20T14:52, sub_ids=16,17,18,19,20,21,22,23,24,25, m_ids=1,2,1,4,5,1,2,1,4,5', '2025-03-16 09:49:59'),
+(189, 'Batch time period inserted or updated for batch_id=17 to students_end=2025-03-07T13:35, lecturers_end=2025-02-28T17:33, hod_end=2025-03-06T12:36, dean_end=2025-03-07T17:06', '2025-03-16 09:51:58'),
+(190, 'Batch updated with batch_id=17, application_open=2025-03-20T14:52, sub_ids=16,17,18,19,20,21,22,23,24,25, m_ids=1,2,1,4,5,1,2,1,4,5', '2025-03-16 09:51:58'),
+(191, 'Batch time period inserted or updated for batch_id=17 to students_end=2025-03-07T13:35, lecturers_end=2025-02-28T17:33, hod_end=2025-03-06T12:36, dean_end=2025-03-07T17:06', '2025-03-16 09:52:20'),
+(192, 'Batch updated with batch_id=17, application_open=2025-03-21T14:52, sub_ids=16,17,18,19,20,21,22,23,24,25, m_ids=1,2,1,4,5,1,2,1,4,5', '2025-03-16 09:52:20'),
+(193, 'Batch updated with batch_id=17, application_open=2025-03-20T14:52, sub_ids=16,17,18,19,20,21,22,23,24,25, m_ids=1,2,1,4,5,1,2,1,4,5', '2025-03-16 09:58:55'),
+(194, 'Batch time period inserted or updated for batch_id=17 to students_end=2025-03-07T13:35, lecturers_end=2025-02-28T17:33, hod_end=2025-03-06T12:36, dean_end=2025-03-07T17:06', '2025-03-16 09:58:55'),
+(195, 'Batch updated with batch_id=17, application_open=2025-03-21T14:52, sub_ids=16,17,18,19,20,21,22,23,24,25, m_ids=1,2,1,4,5,1,2,1,4,5', '2025-03-16 10:00:43'),
+(196, 'Batch time period inserted or updated for batch_id=17 to students_end=2025-03-07T13:35, lecturers_end=2025-02-28T17:33, hod_end=2025-03-06T12:36, dean_end=2025-03-07T17:06', '2025-03-16 10:00:43'),
+(197, 'Batch updated with batch_id=17, application_open=2025-03-29T14:52, sub_ids=16,17,18,19,20,21,22,23,24,25, m_ids=1,2,1,4,5,1,2,1,4,5', '2025-03-16 10:02:29'),
+(198, 'Batch time period inserted or updated for batch_id=17 to students_end=2025-03-07T13:35, lecturers_end=2025-02-28T17:33, hod_end=2025-03-06T12:36, dean_end=2025-03-07T17:06', '2025-03-16 10:02:29'),
+(199, 'Batch time period inserted or updated for batch_id=17 to students_end=2025-03-07T13:35, lecturers_end=2025-02-28T17:33, hod_end=2025-03-06T12:36, dean_end=2025-03-07T17:06', '2025-03-16 10:04:39'),
+(200, 'Batch updated with batch_id=17, application_open=2025-03-28T14:52, sub_ids=16,17,18,19,20,21,22,23,24,25, m_ids=1,2,1,4,5,1,2,1,4,5', '2025-03-16 10:04:39'),
+(201, 'Batch updated with batch_id=17, application_open=2025-03-15T14:52, sub_ids=16,17,18,19,20,21,22,23,24,25, m_ids=1,2,1,4,5,1,2,1,4,5', '2025-03-16 10:41:54'),
+(202, 'Batch time period inserted or updated for batch_id=17 to students_end=2025-03-08T13:35, lecturers_end=2025-02-28T17:33, hod_end=2025-03-06T12:36, dean_end=2025-03-07T17:06', '2025-03-16 10:47:42'),
+(203, 'Batch time period inserted or updated for batch_id=17 to students_end=2025-03-07T13:35, lecturers_end=2025-02-28T17:33, hod_end=2025-03-06T12:36, dean_end=2025-03-07T17:06', '2025-03-16 10:48:33'),
+(204, 'Batch time period inserted or updated for batch_id=17 to students_end=2025-03-08T13:35, lecturers_end=2025-02-28T17:33, hod_end=2025-03-06T12:36, dean_end=2025-03-07T17:06', '2025-03-16 10:50:50'),
+(205, 'Batch time period inserted or updated for batch_id=17 to students_end=2025-03-07T13:35, lecturers_end=2025-02-28T17:33, hod_end=2025-03-06T12:36, dean_end=2025-03-07T17:06', '2025-03-16 10:53:40'),
+(206, 'Batch time period inserted or updated for batch_id=17 to students_end=2025-03-08T13:35, lecturers_end=2025-02-28T17:33, hod_end=2025-03-06T12:36, dean_end=2025-03-07T17:06', '2025-03-16 10:55:28'),
+(207, 'Batch time period inserted or updated for batch_id=17 to students_end=2025-03-07T13:35, lecturers_end=2025-02-28T17:33, hod_end=2025-03-06T12:36, dean_end=2025-03-07T17:06', '2025-03-16 11:07:55'),
+(208, 'Batch updated with batch_id=17, application_open=2025-03-15T14:52, sub_ids=16,17,18,19,20,21,22,23,24,25, m_ids=1,2,1,4,5,1,2,1,4,5', '2025-03-16 11:16:26'),
+(209, 'Batch time period inserted or updated for batch_id=17 to students_end=2025-03-07T13:35, lecturers_end=2025-02-28T17:33, hod_end=2025-03-06T12:36, dean_end=2025-03-07T17:06', '2025-03-16 11:16:26'),
+(210, 'Batch students updated for batch_id=17, droped=, inserted=11,12', '2025-03-16 13:35:27'),
+(211, 'Batch students updated for batch_id=17, droped=11,12, inserted=', '2025-03-16 13:40:29'),
+(212, 'Batch updated with batch_id=17, application_open=2025-03-17T19:10, sub_ids=16,17,18,19,20,21,22,23,24,25, m_ids=1,2,1,4,5,1,2,1,4,5', '2025-03-16 13:40:59'),
+(213, 'Batch time period inserted or updated for batch_id=17 to students_end=2025-03-07T13:35, lecturers_end=2025-02-28T17:33, hod_end=2025-03-06T12:36, dean_end=2025-03-07T17:06', '2025-03-16 13:40:59'),
+(214, 'Batch updated with batch_id=17, application_open=2025-03-17T19:10, sub_ids=16,17,18,19,20,21,22,23,24,25, m_ids=1,2,1,4,5,1,2,1,4,5', '2025-03-16 13:41:08'),
+(215, 'Batch time period inserted or updated for batch_id=17 to students_end=2025-03-06T13:35, lecturers_end=2025-02-28T17:33, hod_end=2025-03-06T12:36, dean_end=2025-03-07T17:06', '2025-03-16 13:41:08'),
+(216, 'Batch updated with batch_id=17, application_open=2025-03-15T19:10, sub_ids=16,17,18,19,20,21,22,23,24,25, m_ids=1,2,1,4,5,1,2,1,4,5', '2025-03-16 13:41:24'),
+(217, 'Batch time period inserted or updated for batch_id=17 to students_end=2025-03-06T13:35, lecturers_end=2025-02-28T17:33, hod_end=2025-03-06T12:36, dean_end=2025-03-07T17:06', '2025-03-16 13:41:24'),
+(218, 'Batch time period inserted or updated for batch_id=17 to students_end=2025-03-06T13:35, lecturers_end=2025-02-28T17:33, hod_end=2025-03-06T12:36, dean_end=2025-03-07T17:06', '2025-03-16 13:51:41'),
+(219, 'Batch updated with batch_id=17, application_open=2025-03-19T19:10, sub_ids=16,17,18,19,20,21,22,23,24,25, m_ids=1,2,1,4,5,1,2,1,4,5', '2025-03-16 13:51:41'),
+(220, 'Batch updated with batch_id=17, application_open=2025-03-22T19:10, sub_ids=16,17,18,19,20,21,22,23,24,25, m_ids=1,2,1,4,5,1,2,1,4,5', '2025-03-16 16:28:57'),
+(221, 'Batch time period inserted or updated for batch_id=17 to students_end=2025-03-07T13:35, lecturers_end=2025-02-28T17:33, hod_end=2025-03-06T12:36, dean_end=2025-03-07T17:06', '2025-03-16 16:28:57'),
+(222, 'Batch updated with batch_id=17, application_open=2025-03-23T19:10, sub_ids=16,17,18,19,20,21,22,23,24,25, m_ids=1,2,1,4,5,1,2,1,4,5', '2025-03-16 16:29:07'),
+(223, 'Batch time period inserted or updated for batch_id=17 to students_end=2025-03-07T13:35, lecturers_end=2025-02-28T17:33, hod_end=2025-03-06T12:36, dean_end=2025-03-07T17:06', '2025-03-16 16:29:07'),
+(224, 'Batch updated with batch_id=17, application_open=2025-03-23T19:10, sub_ids=16,17,18,19,20,21,22,23,24,25, m_ids=1,2,1,4,5,8,2,1,4,5', '2025-03-16 16:29:16'),
+(225, 'Batch time period inserted or updated for batch_id=17 to students_end=2025-03-07T13:35, lecturers_end=2025-02-28T17:33, hod_end=2025-03-06T12:36, dean_end=2025-03-07T17:06', '2025-03-16 16:29:16'),
+(226, 'Batch time period inserted or updated for batch_id=17 to students_end=2025-03-06T13:35, lecturers_end=2025-02-28T17:33, hod_end=2025-03-06T12:36, dean_end=2025-03-07T17:06', '2025-03-16 16:30:45'),
+(227, 'Batch students updated for batch_id=17, droped=, inserted=11,12', '2025-03-16 16:31:22'),
+(228, 'Batch time period inserted or updated for batch_id=17 to students_end=2025-03-18T13:35, lecturers_end=2025-02-28T17:33, hod_end=2025-03-06T12:36, dean_end=2025-03-07T17:06', '2025-03-16 16:33:26'),
+(229, 'Batch updated with batch_id=17, application_open=2025-03-18T19:10, sub_ids=16,17,18,19,20,21,22,23,24,25, m_ids=1,2,1,4,5,8,2,1,4,5', '2025-03-16 16:33:26'),
+(230, 'Batch time period inserted or updated for batch_id=17 to students_end=2025-03-15T13:35, lecturers_end=2025-02-28T17:33, hod_end=2025-03-06T12:36, dean_end=2025-03-07T17:06', '2025-03-16 17:55:04'),
+(231, 'Batch time period inserted or updated for batch_id=17 to students_end=2025-03-15T13:35, lecturers_end=2025-03-17T17:33, hod_end=2025-03-06T12:36, dean_end=2025-03-07T17:06', '2025-03-16 18:11:38'),
+(232, 'Batch time period inserted or updated for batch_id=17 to students_end=2025-03-15T13:35, lecturers_end=2025-03-16T17:33, hod_end=2025-03-18T12:36, dean_end=2025-03-07T17:06', '2025-03-16 19:30:55'),
+(233, 'Batch time period inserted or updated for batch_id=17 to students_end=2025-03-15T13:35, lecturers_end=2025-03-16T17:33, hod_end=2025-03-19T12:36, dean_end=2025-03-18T17:06', '2025-03-16 19:45:39'),
+(234, 'Batch time period inserted or updated for batch_id=17 to students_end=2025-03-15T13:35, lecturers_end=2025-03-16T17:33, hod_end=2025-03-17T12:36, dean_end=2025-03-18T17:06', '2025-03-16 19:45:57'),
+(235, 'Batch time period inserted or updated for batch_id=17 to students_end=2025-03-15T13:35, lecturers_end=2025-03-16T17:33, hod_end=2025-03-17T12:36, dean_end=2025-03-19T17:06', '2025-03-16 19:46:42'),
+(236, 'Batch time period inserted or updated for batch_id=17 to students_end=2025-03-15T13:35, lecturers_end=2025-03-16T17:33, hod_end=2025-03-16T12:36, dean_end=2025-03-19T17:06', '2025-03-16 19:47:50'),
+(237, 'Batch time period inserted or updated for batch_id=17 to students_end=2025-03-15T13:35, lecturers_end=2025-03-16T17:33, hod_end=2025-03-16T12:36, dean_end=2025-03-16T17:06', '2025-03-16 19:50:34'),
+(238, 'Admission created or updated for batch_id=17, generated_date=17.03.2025, transformedSubjects=16:17,18,19:20,21:22,23,24,25, transformedDate=2025:2, description=<p>Candidates are expected to produce this admission card to the Supervisor/Invigilator/Examiner at the Examination Hall. This form&nbsp;&nbsp;&nbsp;should be filled and signed by the candidates in the presence of the Supervisor/Invigilator/Examiner every time a paper test is taken. The&nbsp;Supervisor/Invigilator/Examiner is expected to authenticate the signature of the candidate by placing his/her initials in the appropriate column. Students are requested to hand over the admission card to the Supervisor on the last day of the paper.</p>, instructions=<p><strong><u>Instructions</u></strong></p><ol><li>No candidate shall be admitted to the Examination hall without this card.</li><li>If any candidate loses this admission card, he/she shall obtain a duplicate Admission Card on payment of Rs.150/-</li><li>Every candidate shall produce his/her Identity Card at every paper/Practical Examination he/she sits for.</li><li>Any unauthorized documents, notes &amp; bags should not be taken into the Examinations.</li><li>When unable to be present for any part of the Examination, it should be notified to me&nbsp;<strong><u>immediately in writing</u></strong>&nbsp;. No appeals will be considered later without this timely notification.</li></ol>, provider=<p>Senior Asst. Registrar</p><p>Examination &amp; Student Admission</p>', '2025-03-16 19:53:12'),
+(239, 'Admission created or updated for batch_id=17, generated_date=17.03.2025, transformedSubjects=16:17,18,19:20,21:22,23,24,25, transformedDate=2025:2, description=<p>Candidates are expected to produce this admission card to the Supervisor/Invigilator/Examiner at the Examination Hall. This form&nbsp;&nbsp;&nbsp;should be filled and signed by the candidates in the presence of the Supervisor/Invigilator/Examiner every time a paper test is taken. The&nbsp;Supervisor/Invigilator/Examiner is expected to authenticate the signature of the candidate by placing his/her initials in the appropriate column. Students are requested to hand over the admission card to the Supervisor on the last day of the paper.</p>, instructions=<p><strong><u>Instructions</u></strong></p><ol><li>No candidate shall be admitted to the Examination hall without this card.</li><li>If any candidate loses this admission card, he/she shall obtain a duplicate Admission Card on payment of Rs.150/-</li><li>Every candidate shall produce his/her Identity Card at every paper/Practical Examination he/she sits for.</li><li>Any unauthorized documents, notes &amp; bags should not be taken into the Examinations.</li><li>When unable to be present for any part of the Examination, it should be notified to me&nbsp;<strong><u>immediately in writing</u></strong>&nbsp;. No appeals will be considered later without this timely notification.</li></ol>, provider=<p>Senior Asst. Registrar</p><p>Examination &amp; Student Admission</p>', '2025-03-16 20:35:32'),
+(240, 'Admission created or updated for batch_id=17, generated_date=17.03.2025, transformedSubjects=16:17,18,19:20,21:22,23,24,25, transformedDate=2025:2, description=<p>Candidates are expected to produce this admission card to the Supervisor/Invigilator/Examiner at the Examination Hall. This form&nbsp;&nbsp;&nbsp;should be filled and signed by the candidates in the presence of the Supervisor/Invigilator/Examiner every time a paper test is taken. The&nbsp;Supervisor/Invigilator/Examiner is expected to authenticate the signature of the candidate by placing his/her initials in the appropriate column. Students are requested to hand over the admission card to the Supervisor on the last day of the paper.</p>, instructions=<p><strong><u>Instructions</u></strong></p><ol><li>No candidate shall be admitted to the Examination hall without this card.</li><li>If any candidate loses this admission card, he/she shall obtain a duplicate Admission Card on payment of Rs.150/-</li><li>Every candidate shall produce his/her Identity Card at every paper/Practical Examination he/she sits for.</li><li>Any unauthorized documents, notes &amp; bags should not be taken into the Examinations.</li><li>When unable to be present for any part of the Examination, it should be notified to me&nbsp;<strong><u>immediately in writing</u></strong>&nbsp;. No appeals will be considered later without this timely notification.</li></ol>, provider=<p>Senior Asst. Registrar</p><p>Examination &amp; Student Admission</p>', '2025-03-16 20:38:37'),
+(241, 'Admission created or updated for batch_id=17, generated_date=17.03.2025, transformedSubjects=16:17,18,19:20,21:22,23,24,25, transformedDate=2025:2, description=<p>Candidates are expected to produce this admission card to the Supervisor/Invigilator/Examiner at the Examination Hall. This form&nbsp;&nbsp;&nbsp;should be filled and signed by the candidates in the presence of the Supervisor/Invigilator/Examiner every time a paper test is taken. The&nbsp;Supervisor/Invigilator/Examiner is expected to authenticate the signature of the candidate by placing his/her initials in the appropriate column. Students are requested to hand over the admission card to the Supervisor on the last day of the paper.</p>, instructions=<p><strong><u>Instructions</u></strong></p><ol><li>No candidate shall be admitted to the Examination hall without this card.</li><li>If any candidate loses this admission card, he/she shall obtain a duplicate Admission Card on payment of Rs.150/-</li><li>Every candidate shall produce his/her Identity Card at every paper/Practical Examination he/she sits for.</li><li>Any unauthorized documents, notes &amp; bags should not be taken into the Examinations.</li><li>When unable to be present for any part of the Examination, it should be notified to me&nbsp;<strong><u>immediately in writing</u></strong>&nbsp;. No appeals will be considered later without this timely notification.</li></ol>, provider=<p>Senior Asst. Registrar</p><p>Examination &amp; Student Admission</p>', '2025-03-16 20:40:09'),
+(242, 'Admission created or updated for batch_id=17, generated_date=17.03.2025, transformedSubjects=16:17,18,19:20,21:22,23,24,25, transformedDate=2025:2, description=<p>Candidates are expected to produce this admission card to the Supervisor/Invigilator/Examiner at the Examination Hall. This form&nbsp;&nbsp;&nbsp;should be filled and signed by the candidates in the presence of the Supervisor/Invigilator/Examiner every time a paper test is taken. The&nbsp;Supervisor/Invigilator/Examiner is expected to authenticate the signature of the candidate by placing his/her initials in the appropriate column. Students are requested to hand over the admission card to the Supervisor on the last day of the paper.</p>, instructions=<p><strong><u>Instructions</u></strong></p><ol><li>No candidate shall be admitted to the Examination hall without this card.</li><li>If any candidate loses this admission card, he/she shall obtain a duplicate Admission Card on payment of Rs.150/-</li><li>Every candidate shall produce his/her Identity Card at every paper/Practical Examination he/she sits for.</li><li>Any unauthorized documents, notes &amp; bags should not be taken into the Examinations.</li><li>When unable to be present for any part of the Examination, it should be notified to me&nbsp;<strong><u>immediately in writing</u></strong>&nbsp;. No appeals will be considered later without this timely notification.</li></ol>, provider=<p>Senior Asst. Registrar</p><p>Examination &amp; Student Admission</p>', '2025-03-16 20:45:13'),
+(243, 'Admission created or updated for batch_id=17, generated_date=17.03.2025, transformedSubjects=16:17,18,19:20,21:22,23,24,25, transformedDate=2025:2, description=<p>Candidates are expected to produce this admission card to the Supervisor/Invigilator/Examiner at the Examination Hall. This form&nbsp;&nbsp;&nbsp;should be filled and signed by the candidates in the presence of the Supervisor/Invigilator/Examiner every time a paper test is taken. The&nbsp;Supervisor/Invigilator/Examiner is expected to authenticate the signature of the candidate by placing his/her initials in the appropriate column. Students are requested to hand over the admission card to the Supervisor on the last day of the paper.</p>, instructions=<p><strong><u>Instructions</u></strong></p><ol><li>No candidate shall be admitted to the Examination hall without this card.</li><li>If any candidate loses this admission card, he/she shall obtain a duplicate Admission Card on payment of Rs.150/-</li><li>Every candidate shall produce his/her Identity Card at every paper/Practical Examination he/she sits for.</li><li>Any unauthorized documents, notes &amp; bags should not be taken into the Examinations.</li><li>When unable to be present for any part of the Examination, it should be notified to me&nbsp;<strong><u>immediately in writing</u></strong>&nbsp;. No appeals will be considered later without this timely notification.</li></ol>, provider=<p>Senior Asst. Registrar</p><p>Examination &amp; Student Admission</p>', '2025-03-16 20:52:23');
+INSERT INTO `admin_log` (`id`, `description`, `date_time`) VALUES
+(244, 'Admission created or updated for batch_id=17, generated_date=17.03.2025, transformedSubjects=16:17,18,19:20,21:22,23,24,25, transformedDate=2025:2, description=<p>Candidates are expected to produce this admission card to the Supervisor/Invigilator/Examiner at the Examination Hall. This form&nbsp;&nbsp;&nbsp;should be filled and signed by the candidates in the presence of the Supervisor/Invigilator/Examiner every time a paper test is taken. The&nbsp;Supervisor/Invigilator/Examiner is expected to authenticate the signature of the candidate by placing his/her initials in the appropriate column. Students are requested to hand over the admission card to the Supervisor on the last day of the paper.</p>, instructions=<p><strong><u>Instructions</u></strong></p><ol><li>No candidate shall be admitted to the Examination hall without this card.</li><li>If any candidate loses this admission card, he/she shall obtain a duplicate Admission Card on payment of Rs.150/-</li><li>Every candidate shall produce his/her Identity Card at every paper/Practical Examination he/she sits for.</li><li>Any unauthorized documents, notes &amp; bags should not be taken into the Examinations.</li><li>When unable to be present for any part of the Examination, it should be notified to me&nbsp;<strong><u>immediately in writing</u></strong>&nbsp;. No appeals will be considered later without this timely notification.</li></ol>, provider=<p>Senior Asst. Registrar</p><p>Examination &amp; Student Admission</p>', '2025-03-16 20:57:23'),
+(245, 'Admission created or updated for batch_id=17, generated_date=17.03.2025, transformedSubjects=16:17,18,19:20,21:22,23,24,25, transformedDate=2025:2, description=<p>Candidates are expected to produce this admission card to the Supervisor/Invigilator/Examiner at the Examination Hall. This form&nbsp;&nbsp;&nbsp;should be filled and signed by the candidates in the presence of the Supervisor/Invigilator/Examiner every time a paper test is taken. The&nbsp;Supervisor/Invigilator/Examiner is expected to authenticate the signature of the candidate by placing his/her initials in the appropriate column. Students are requested to hand over the admission card to the Supervisor on the last day of the paper.</p>, instructions=<p><strong><u>Instructions</u></strong></p><ol><li>No candidate shall be admitted to the Examination hall without this card.</li><li>If any candidate loses this admission card, he/she shall obtain a duplicate Admission Card on payment of Rs.150/-</li><li>Every candidate shall produce his/her Identity Card at every paper/Practical Examination he/she sits for.</li><li>Any unauthorized documents, notes &amp; bags should not be taken into the Examinations.</li><li>When unable to be present for any part of the Examination, it should be notified to me&nbsp;<strong><u>immediately in writing</u></strong>&nbsp;. No appeals will be considered later without this timely notification.</li></ol>, provider=<p>Senior Asst. Registrar</p><p>Examination &amp; Student Admission</p>', '2025-03-16 21:01:01'),
+(246, 'Admission created or updated for batch_id=17, generated_date=17.03.2025, transformedSubjects=16:17,18,19:20,21:22,23,24,25, transformedDate=2025:2, description=<p>Candidates are expected to produce this admission card to the Supervisor/Invigilator/Examiner at the Examination Hall. This form&nbsp;&nbsp;&nbsp;should be filled and signed by the candidates in the presence of the Supervisor/Invigilator/Examiner every time a paper test is taken. The&nbsp;Supervisor/Invigilator/Examiner is expected to authenticate the signature of the candidate by placing his/her initials in the appropriate column. Students are requested to hand over the admission card to the Supervisor on the last day of the paper.</p>, instructions=<p><strong><u>Instructions</u></strong></p><ol><li>No candidate shall be admitted to the Examination hall without this card.</li><li>If any candidate loses this admission card, he/she shall obtain a duplicate Admission Card on payment of Rs.150/-</li><li>Every candidate shall produce his/her Identity Card at every paper/Practical Examination he/she sits for.</li><li>Any unauthorized documents, notes &amp; bags should not be taken into the Examinations.</li><li>When unable to be present for any part of the Examination, it should be notified to me&nbsp;<strong><u>immediately in writing</u></strong>&nbsp;. No appeals will be considered later without this timely notification.</li></ol>, provider=<p>Senior Asst. Registrar</p><p>Examination &amp; Student Admission</p>', '2025-03-16 21:05:47'),
+(247, 'Admission created or updated for batch_id=17, generated_date=17.03.2025, transformedSubjects=16:17,18,19:20,21:22,23,24,25, transformedDate=2025:2, description=<p>Candidates are expected to produce this admission card to the Supervisor/Invigilator/Examiner at the Examination Hall. This form&nbsp;&nbsp;&nbsp;should be filled and signed by the candidates in the presence of the Supervisor/Invigilator/Examiner every time a paper test is taken. The&nbsp;Supervisor/Invigilator/Examiner is expected to authenticate the signature of the candidate by placing his/her initials in the appropriate column. Students are requested to hand over the admission card to the Supervisor on the last day of the paper.</p>, instructions=<p><strong><u>Instructions</u></strong></p><ol><li>No candidate shall be admitted to the Examination hall without this card.</li><li>If any candidate loses this admission card, he/she shall obtain a duplicate Admission Card on payment of Rs.150/-</li><li>Every candidate shall produce his/her Identity Card at every paper/Practical Examination he/she sits for.</li><li>Any unauthorized documents, notes &amp; bags should not be taken into the Examinations.</li><li>When unable to be present for any part of the Examination, it should be notified to me&nbsp;<strong><u>immediately in writing</u></strong>&nbsp;. No appeals will be considered later without this timely notification.</li></ol>, provider=<p>Senior Asst. Registrar</p><p>Examination &amp; Student Admission</p>', '2025-03-16 21:06:37'),
+(248, 'Admission created or updated for batch_id=17, generated_date=17.03.2025, transformedSubjects=16:17,18,19:20,21:22,23,24,25, transformedDate=2025:2, description=<p>Candidates are expected to produce this admission card to the Supervisor/Invigilator/Examiner at the Examination Hall. This form&nbsp;&nbsp;&nbsp;should be filled and signed by the candidates in the presence of the Supervisor/Invigilator/Examiner every time a paper test is taken. The&nbsp;Supervisor/Invigilator/Examiner is expected to authenticate the signature of the candidate by placing his/her initials in the appropriate column. Students are requested to hand over the admission card to the Supervisor on the last day of the paper.</p>, instructions=<p><strong><u>Instructions</u></strong></p><ol><li>No candidate shall be admitted to the Examination hall without this card.</li><li>If any candidate loses this admission card, he/she shall obtain a duplicate Admission Card on payment of Rs.150/-</li><li>Every candidate shall produce his/her Identity Card at every paper/Practical Examination he/she sits for.</li><li>Any unauthorized documents, notes &amp; bags should not be taken into the Examinations.</li><li>When unable to be present for any part of the Examination, it should be notified to me&nbsp;<strong><u>immediately in writing</u></strong>&nbsp;. No appeals will be considered later without this timely notification.</li></ol>, provider=<p>Senior Asst. Registrar</p><p>Examination &amp; Student Admission</p>', '2025-03-16 21:14:05'),
+(249, 'Admission created or updated for batch_id=17, generated_date=17.03.2025, transformedSubjects=16:17,18,19:20,21:22,23,24,25, transformedDate=2025:2, description=<p>Candidates are expected to produce this admission card to the Supervisor/Invigilator/Examiner at the Examination Hall. This form&nbsp;&nbsp;&nbsp;should be filled and signed by the candidates in the presence of the Supervisor/Invigilator/Examiner every time a paper test is taken. The&nbsp;Supervisor/Invigilator/Examiner is expected to authenticate the signature of the candidate by placing his/her initials in the appropriate column. Students are requested to hand over the admission card to the Supervisor on the last day of the paper.</p>, instructions=<p><strong><u>Instructions</u></strong></p><ol><li>No candidate shall be admitted to the Examination hall without this card.</li><li>If any candidate loses this admission card, he/she shall obtain a duplicate Admission Card on payment of Rs.150/-</li><li>Every candidate shall produce his/her Identity Card at every paper/Practical Examination he/she sits for.</li><li>Any unauthorized documents, notes &amp; bags should not be taken into the Examinations.</li><li>When unable to be present for any part of the Examination, it should be notified to me&nbsp;<strong><u>immediately in writing</u></strong>&nbsp;. No appeals will be considered later without this timely notification.</li></ol>, provider=<p>Senior Asst. Registrar</p><p>Examination &amp; Student Admission</p>', '2025-03-16 21:15:06'),
+(250, 'Admission created or updated for batch_id=17, generated_date=17.03.2025, transformedSubjects=16:17,18,19:20,21:22,23,24,25, transformedDate=2025:2, description=<p>Candidates are expected to produce this admission card to the Supervisor/Invigilator/Examiner at the Examination Hall. This form&nbsp;&nbsp;&nbsp;should be filled and signed by the candidates in the presence of the Supervisor/Invigilator/Examiner every time a paper test is taken. The&nbsp;Supervisor/Invigilator/Examiner is expected to authenticate the signature of the candidate by placing his/her initials in the appropriate column. Students are requested to hand over the admission card to the Supervisor on the last day of the paper.</p>, instructions=<p><strong><u>Instructions</u></strong></p><ol><li>No candidate shall be admitted to the Examination hall without this card.</li><li>If any candidate loses this admission card, he/she shall obtain a duplicate Admission Card on payment of Rs.150/-</li><li>Every candidate shall produce his/her Identity Card at every paper/Practical Examination he/she sits for.</li><li>Any unauthorized documents, notes &amp; bags should not be taken into the Examinations.</li><li>When unable to be present for any part of the Examination, it should be notified to me&nbsp;<strong><u>immediately in writing</u></strong>&nbsp;. No appeals will be considered later without this timely notification.</li></ol>, provider=<p>Senior Asst. Registrar</p><p>Examination &amp; Student Admission</p>', '2025-03-16 21:17:10'),
+(251, 'Admission created or updated for batch_id=17, generated_date=17.03.2025, transformedSubjects=16:17,18,19:20,21:22,23,24,25, transformedDate=2025:2, description=<p>Candidates are expected to produce this admission card to the Supervisor/Invigilator/Examiner at the Examination Hall. This form&nbsp;&nbsp;&nbsp;should be filled and signed by the candidates in the presence of the Supervisor/Invigilator/Examiner every time a paper test is taken. The&nbsp;Supervisor/Invigilator/Examiner is expected to authenticate the signature of the candidate by placing his/her initials in the appropriate column. Students are requested to hand over the admission card to the Supervisor on the last day of the paper.</p>, instructions=<p><strong><u>Instructions</u></strong></p><ol><li>No candidate shall be admitted to the Examination hall without this card.</li><li>If any candidate loses this admission card, he/she shall obtain a duplicate Admission Card on payment of Rs.150/-</li><li>Every candidate shall produce his/her Identity Card at every paper/Practical Examination he/she sits for.</li><li>Any unauthorized documents, notes &amp; bags should not be taken into the Examinations.</li><li>When unable to be present for any part of the Examination, it should be notified to me&nbsp;<strong><u>immediately in writing</u></strong>&nbsp;. No appeals will be considered later without this timely notification.</li></ol>, provider=<p>Senior Asst. Registrar</p><p>Examination &amp; Student Admission</p>', '2025-03-16 21:18:45'),
+(252, 'Admission created or updated for batch_id=17, generated_date=17.03.2025, transformedSubjects=16:17,18,19:20,21:22,23,24,25, transformedDate=2025:2, description=<p>Candidates are expected to produce this admission card to the Supervisor/Invigilator/Examiner at the Examination Hall. This form&nbsp;&nbsp;&nbsp;should be filled and signed by the candidates in the presence of the Supervisor/Invigilator/Examiner every time a paper test is taken. The&nbsp;Supervisor/Invigilator/Examiner is expected to authenticate the signature of the candidate by placing his/her initials in the appropriate column. Students are requested to hand over the admission card to the Supervisor on the last day of the paper.</p>, instructions=<p><strong><u>Instructions</u></strong></p><ol><li>No candidate shall be admitted to the Examination hall without this card.</li><li>If any candidate loses this admission card, he/she shall obtain a duplicate Admission Card on payment of Rs.150/-</li><li>Every candidate shall produce his/her Identity Card at every paper/Practical Examination he/she sits for.</li><li>Any unauthorized documents, notes &amp; bags should not be taken into the Examinations.</li><li>When unable to be present for any part of the Examination, it should be notified to me&nbsp;<strong><u>immediately in writing</u></strong>&nbsp;. No appeals will be considered later without this timely notification.</li></ol>, provider=<p>Senior Asst. Registrar</p><p>Examination &amp; Student Admission</p>', '2025-03-16 21:19:20'),
+(253, 'Admission created or updated for batch_id=17, generated_date=17.03.2025, transformedSubjects=16:17,18,19:20,21:22,23,24,25, transformedDate=2025:2, description=<p>Candidates are expected to produce this admission card to the Supervisor/Invigilator/Examiner at the Examination Hall. This form&nbsp;&nbsp;&nbsp;should be filled and signed by the candidates in the presence of the Supervisor/Invigilator/Examiner every time a paper test is taken. The&nbsp;Supervisor/Invigilator/Examiner is expected to authenticate the signature of the candidate by placing his/her initials in the appropriate column. Students are requested to hand over the admission card to the Supervisor on the last day of the paper.</p>, instructions=<p><strong><u>Instructions</u></strong></p><ol><li>No candidate shall be admitted to the Examination hall without this card.</li><li>If any candidate loses this admission card, he/she shall obtain a duplicate Admission Card on payment of Rs.150/-</li><li>Every candidate shall produce his/her Identity Card at every paper/Practical Examination he/she sits for.</li><li>Any unauthorized documents, notes &amp; bags should not be taken into the Examinations.</li><li>When unable to be present for any part of the Examination, it should be notified to me&nbsp;<strong><u>immediately in writing</u></strong>&nbsp;. No appeals will be considered later without this timely notification.</li></ol>, provider=<p>Senior Asst. Registrar</p><p>Examination &amp; Student Admission</p>', '2025-03-16 21:19:29'),
+(254, 'Admission created or updated for batch_id=17, generated_date=17.03.2025, transformedSubjects=16:17,18,19:20,21:22,23,24,25, transformedDate=2025:2, description=<p>Candidates are expected to produce this admission card to the Supervisor/Invigilator/Examiner at the Examination Hall. This form&nbsp;&nbsp;&nbsp;should be filled and signed by the candidates in the presence of the Supervisor/Invigilator/Examiner every time a paper test is taken. The&nbsp;Supervisor/Invigilator/Examiner is expected to authenticate the signature of the candidate by placing his/her initials in the appropriate column. Students are requested to hand over the admission card to the Supervisor on the last day of the paper.</p>, instructions=<p><strong><u>Instructions</u></strong></p><ol><li>No candidate shall be admitted to the Examination hall without this card.</li><li>If any candidate loses this admission card, he/she shall obtain a duplicate Admission Card on payment of Rs.150/-</li><li>Every candidate shall produce his/her Identity Card at every paper/Practical Examination he/she sits for.</li><li>Any unauthorized documents, notes &amp; bags should not be taken into the Examinations.</li><li>When unable to be present for any part of the Examination, it should be notified to me&nbsp;<strong><u>immediately in writing</u></strong>&nbsp;. No appeals will be considered later without this timely notification.</li></ol>, provider=<p>Senior Asst. Registrar</p><p>Examination &amp; Student Admission</p>', '2025-03-16 21:20:18'),
+(255, 'Admission created or updated for batch_id=17, generated_date=17.03.2025, transformedSubjects=16:17,18,19:20,21:22,23,24,25, transformedDate=2025:2, description=<p>Candidates are expected to produce this admission card to the Supervisor/Invigilator/Examiner at the Examination Hall. This form&nbsp;&nbsp;&nbsp;should be filled and signed by the candidates in the presence of the Supervisor/Invigilator/Examiner every time a paper test is taken. The&nbsp;Supervisor/Invigilator/Examiner is expected to authenticate the signature of the candidate by placing his/her initials in the appropriate column. Students are requested to hand over the admission card to the Supervisor on the last day of the paper.</p>, instructions=<p><strong><u>Instructions</u></strong></p><ol><li>No candidate shall be admitted to the Examination hall without this card.</li><li>If any candidate loses this admission card, he/she shall obtain a duplicate Admission Card on payment of Rs.150/-</li><li>Every candidate shall produce his/her Identity Card at every paper/Practical Examination he/she sits for.</li><li>Any unauthorized documents, notes &amp; bags should not be taken into the Examinations.</li><li>When unable to be present for any part of the Examination, it should be notified to me&nbsp;<strong><u>immediately in writing</u></strong>&nbsp;. No appeals will be considered later without this timely notification.</li></ol>, provider=<p>Senior Asst. Registrar</p><p>Examination &amp; Student Admission</p>', '2025-03-17 06:31:50'),
+(256, 'Admission created or updated for batch_id=17, generated_date=17.03.2025, transformedSubjects=16:17,18,19:20,21:22,23,24,25, transformedDate=2025:2, description=<p>Candidates are expected to produce this admission card to the Supervisor/Invigilator/Examiner at the Examination Hall. This form&nbsp;&nbsp;&nbsp;should be filled and signed by the candidates in the presence of the Supervisor/Invigilator/Examiner every time a paper test is taken. The&nbsp;Supervisor/Invigilator/Examiner is expected to authenticate the signature of the candidate by placing his/her initials in the appropriate column. Students are requested to hand over the admission card to the Supervisor on the last day of the paper.</p>, instructions=<p><strong><u>Instructions</u></strong></p><ol><li>No candidate shall be admitted to the Examination hall without this card.</li><li>If any candidate loses this admission card, he/she shall obtain a duplicate Admission Card on payment of Rs.150/-</li><li>Every candidate shall produce his/her Identity Card at every paper/Practical Examination he/she sits for.</li><li>Any unauthorized documents, notes &amp; bags should not be taken into the Examinations.</li><li>When unable to be present for any part of the Examination, it should be notified to me&nbsp;<strong><u>immediately in writing</u></strong>&nbsp;. No appeals will be considered later without this timely notification.</li></ol>, provider=<p>Senior Asst. Registrar</p><p>Examination &amp; Student Admission</p>', '2025-03-17 06:35:15'),
+(257, 'Admission created or updated for batch_id=17, generated_date=17.03.2025, transformedSubjects=16:17,18,19:20,21:22,23,24,25, transformedDate=2025:2, description=<p>Candidates are expected to produce this admission card to the Supervisor/Invigilator/Examiner at the Examination Hall. This form&nbsp;&nbsp;&nbsp;should be filled and signed by the candidates in the presence of the Supervisor/Invigilator/Examiner every time a paper test is taken. The&nbsp;Supervisor/Invigilator/Examiner is expected to authenticate the signature of the candidate by placing his/her initials in the appropriate column. Students are requested to hand over the admission card to the Supervisor on the last day of the paper.</p>, instructions=<p><strong><u>Instructions</u></strong></p><ol><li>No candidate shall be admitted to the Examination hall without this card.</li><li>If any candidate loses this admission card, he/she shall obtain a duplicate Admission Card on payment of Rs.150/-</li><li>Every candidate shall produce his/her Identity Card at every paper/Practical Examination he/she sits for.</li><li>Any unauthorized documents, notes &amp; bags should not be taken into the Examinations.</li><li>When unable to be present for any part of the Examination, it should be notified to me&nbsp;<strong><u>immediately in writing</u></strong>&nbsp;. No appeals will be considered later without this timely notification.</li></ol>, provider=<p>Senior Asst. Registrar</p><p>Examination &amp; Student Admission</p>', '2025-03-17 06:44:40'),
+(258, 'Admission created or updated for batch_id=17, generated_date=17.03.2025, transformedSubjects=16:17,18,19:20,21:22,23,24,25, transformedDate=2025:2, description=<p>Candidates are expected to produce this admission card to the Supervisor/Invigilator/Examiner at the Examination Hall. This form&nbsp;&nbsp;&nbsp;should be filled and signed by the candidates in the presence of the Supervisor/Invigilator/Examiner every time a paper test is taken. The&nbsp;Supervisor/Invigilator/Examiner is expected to authenticate the signature of the candidate by placing his/her initials in the appropriate column. Students are requested to hand over the admission card to the Supervisor on the last day of the paper.</p>, instructions=<p><strong><u>Instructions</u></strong></p><ol><li>No candidate shall be admitted to the Examination hall without this card.</li><li>If any candidate loses this admission card, he/she shall obtain a duplicate Admission Card on payment of Rs.150/-</li><li>Every candidate shall produce his/her Identity Card at every paper/Practical Examination he/she sits for.</li><li>Any unauthorized documents, notes &amp; bags should not be taken into the Examinations.</li><li>When unable to be present for any part of the Examination, it should be notified to me&nbsp;<strong><u>immediately in writing</u></strong>&nbsp;. No appeals will be considered later without this timely notification.</li></ol>, provider=<p>Senior Asst. Registrar</p><p>Examination &amp; Student Admission</p>', '2025-03-17 06:48:01'),
+(259, 'Admission created or updated for batch_id=17, generated_date=17.03.2025, transformedSubjects=16:17,18,19:20,21:22,23,24,25, transformedDate=2025:2, description=<p>Candidates are expected to produce this admission card to the Supervisor/Invigilator/Examiner at the Examination Hall. This form&nbsp;&nbsp;&nbsp;should be filled and signed by the candidates in the presence of the Supervisor/Invigilator/Examiner every time a paper test is taken. The&nbsp;Supervisor/Invigilator/Examiner is expected to authenticate the signature of the candidate by placing his/her initials in the appropriate column. Students are requested to hand over the admission card to the Supervisor on the last day of the paper.</p>, instructions=<p><strong><u>Instructions</u></strong></p><ol><li>No candidate shall be admitted to the Examination hall without this card.</li><li>If any candidate loses this admission card, he/she shall obtain a duplicate Admission Card on payment of Rs.150/-</li><li>Every candidate shall produce his/her Identity Card at every paper/Practical Examination he/she sits for.</li><li>Any unauthorized documents, notes &amp; bags should not be taken into the Examinations.</li><li>When unable to be present for any part of the Examination, it should be notified to me&nbsp;<strong><u>immediately in writing</u></strong>&nbsp;. No appeals will be considered later without this timely notification.</li></ol>, provider=<p>Senior Asst. Registrar</p><p>Examination &amp; Student Admission</p>', '2025-03-17 06:50:41'),
+(260, 'Admission created or updated for batch_id=17, generated_date=17.03.2025, transformedSubjects=16:17,18,19:20,21:22,23,24,25, transformedDate=2025:2, description=<p>Candidates are expected to produce this admission card to the Supervisor/Invigilator/Examiner at the Examination Hall. This form&nbsp;&nbsp;&nbsp;should be filled and signed by the candidates in the presence of the Supervisor/Invigilator/Examiner every time a paper test is taken. The&nbsp;Supervisor/Invigilator/Examiner is expected to authenticate the signature of the candidate by placing his/her initials in the appropriate column. Students are requested to hand over the admission card to the Supervisor on the last day of the paper.</p>, instructions=<p><strong><u>Instructions</u></strong></p><ol><li>No candidate shall be admitted to the Examination hall without this card.</li><li>If any candidate loses this admission card, he/she shall obtain a duplicate Admission Card on payment of Rs.150/-</li><li>Every candidate shall produce his/her Identity Card at every paper/Practical Examination he/she sits for.</li><li>Any unauthorized documents, notes &amp; bags should not be taken into the Examinations.</li><li>When unable to be present for any part of the Examination, it should be notified to me&nbsp;<strong><u>immediately in writing</u></strong>&nbsp;. No appeals will be considered later without this timely notification.</li></ol>, provider=<p>Senior Asst. Registrar</p><p>Examination &amp; Student Admission</p>', '2025-03-17 06:52:22'),
+(261, 'Admission created or updated for batch_id=17, generated_date=17.03.2025, transformedSubjects=16:17,18,19:20,21:22,23,24,25, transformedDate=2025:2, description=<p>Candidates are expected to produce this admission card to the Supervisor/Invigilator/Examiner at the Examination Hall. This form&nbsp;&nbsp;&nbsp;should be filled and signed by the candidates in the presence of the Supervisor/Invigilator/Examiner every time a paper test is taken. The&nbsp;Supervisor/Invigilator/Examiner is expected to authenticate the signature of the candidate by placing his/her initials in the appropriate column. Students are requested to hand over the admission card to the Supervisor on the last day of the paper.</p>, instructions=<p><strong><u>Instructions</u></strong></p><ol><li>No candidate shall be admitted to the Examination hall without this card.</li><li>If any candidate loses this admission card, he/she shall obtain a duplicate Admission Card on payment of Rs.150/-</li><li>Every candidate shall produce his/her Identity Card at every paper/Practical Examination he/she sits for.</li><li>Any unauthorized documents, notes &amp; bags should not be taken into the Examinations.</li><li>When unable to be present for any part of the Examination, it should be notified to me&nbsp;<strong><u>immediately in writing</u></strong>&nbsp;. No appeals will be considered later without this timely notification.</li></ol>, provider=<p>Senior Asst. Registrar</p><p>Examination &amp; Student Admission</p>', '2025-03-17 06:55:03'),
+(262, 'Admission created or updated for batch_id=17, generated_date=17.03.2025, transformedSubjects=16:17,18,19:20,21:22,23,24,25, transformedDate=2025:2, description=<p>Candidates are expected to produce this admission card to the Supervisor/Invigilator/Examiner at the Examination Hall. This form&nbsp;&nbsp;&nbsp;should be filled and signed by the candidates in the presence of the Supervisor/Invigilator/Examiner every time a paper test is taken. The&nbsp;Supervisor/Invigilator/Examiner is expected to authenticate the signature of the candidate by placing his/her initials in the appropriate column. Students are requested to hand over the admission card to the Supervisor on the last day of the paper.</p>, instructions=<p><strong><u>Instructions</u></strong></p><ol><li>No candidate shall be admitted to the Examination hall without this card.</li><li>If any candidate loses this admission card, he/she shall obtain a duplicate Admission Card on payment of Rs.150/-</li><li>Every candidate shall produce his/her Identity Card at every paper/Practical Examination he/she sits for.</li><li>Any unauthorized documents, notes &amp; bags should not be taken into the Examinations.</li><li>When unable to be present for any part of the Examination, it should be notified to me&nbsp;<strong><u>immediately in writing</u></strong>&nbsp;. No appeals will be considered later without this timely notification.</li></ol>, provider=<p>Senior Asst. Registrar</p><p>Examination &amp; Student Admission</p>', '2025-03-17 06:58:35'),
+(263, 'Admission created or updated for batch_id=17, generated_date=17.03.2025, transformedSubjects=16:17,18,19:20,21:22,23,24,25, transformedDate=2025:2, description=<p>Candidates are expected to produce this admission card to the Supervisor/Invigilator/Examiner at the Examination Hall. This form&nbsp;&nbsp;&nbsp;should be filled and signed by the candidates in the presence of the Supervisor/Invigilator/Examiner every time a paper test is taken. The&nbsp;Supervisor/Invigilator/Examiner is expected to authenticate the signature of the candidate by placing his/her initials in the appropriate column. Students are requested to hand over the admission card to the Supervisor on the last day of the paper.</p>, instructions=<p><strong><u>Instructions</u></strong></p><ol><li>No candidate shall be admitted to the Examination hall without this card.</li><li>If any candidate loses this admission card, he/she shall obtain a duplicate Admission Card on payment of Rs.150/-</li><li>Every candidate shall produce his/her Identity Card at every paper/Practical Examination he/she sits for.</li><li>Any unauthorized documents, notes &amp; bags should not be taken into the Examinations.</li><li>When unable to be present for any part of the Examination, it should be notified to me&nbsp;<strong><u>immediately in writing</u></strong>&nbsp;. No appeals will be considered later without this timely notification.</li></ol>, provider=<p>Senior Asst. Registrar</p><p>Examination &amp; Student Admission</p>', '2025-03-17 06:59:26'),
+(264, 'Admission created or updated for batch_id=17, generated_date=17.03.2025, transformedSubjects=16:17,18,19:20,21:22,23,24,25, transformedDate=2025:2, description=<p>Candidates are expected to produce this admission card to the Supervisor/Invigilator/Examiner at the Examination Hall. This form&nbsp;&nbsp;&nbsp;should be filled and signed by the candidates in the presence of the Supervisor/Invigilator/Examiner every time a paper test is taken. The&nbsp;Supervisor/Invigilator/Examiner is expected to authenticate the signature of the candidate by placing his/her initials in the appropriate column. Students are requested to hand over the admission card to the Supervisor on the last day of the paper.</p>, instructions=<p><strong><u>Instructions</u></strong></p><ol><li>No candidate shall be admitted to the Examination hall without this card.</li><li>If any candidate loses this admission card, he/she shall obtain a duplicate Admission Card on payment of Rs.150/-</li><li>Every candidate shall produce his/her Identity Card at every paper/Practical Examination he/she sits for.</li><li>Any unauthorized documents, notes &amp; bags should not be taken into the Examinations.</li><li>When unable to be present for any part of the Examination, it should be notified to me&nbsp;<strong><u>immediately in writing</u></strong>&nbsp;. No appeals will be considered later without this timely notification.</li></ol>, provider=<p>Senior Asst. Registrar</p><p>Examination &amp; Student Admission</p>', '2025-03-17 07:01:01'),
+(265, 'Admission created or updated for batch_id=17, generated_date=17.03.2025, transformedSubjects=16:17,18,19:20,21:22,23,24,25, transformedDate=2025:2, description=<p>Candidates are expected to produce this admission card to the Supervisor/Invigilator/Examiner at the Examination Hall. This form&nbsp;&nbsp;&nbsp;should be filled and signed by the candidates in the presence of the Supervisor/Invigilator/Examiner every time a paper test is taken. The&nbsp;Supervisor/Invigilator/Examiner is expected to authenticate the signature of the candidate by placing his/her initials in the appropriate column. Students are requested to hand over the admission card to the Supervisor on the last day of the paper.</p>, instructions=<p><strong><u>Instructions</u></strong></p><ol><li>No candidate shall be admitted to the Examination hall without this card.</li><li>If any candidate loses this admission card, he/she shall obtain a duplicate Admission Card on payment of Rs.150/-</li><li>Every candidate shall produce his/her Identity Card at every paper/Practical Examination he/she sits for.</li><li>Any unauthorized documents, notes &amp; bags should not be taken into the Examinations.</li><li>When unable to be present for any part of the Examination, it should be notified to me&nbsp;<strong><u>immediately in writing</u></strong>&nbsp;. No appeals will be considered later without this timely notification.</li></ol>, provider=<p>Senior Asst. Registrar</p><p>Examination &amp; Student Admission</p>', '2025-03-17 07:48:29'),
+(266, 'Admission created or updated for batch_id=17, generated_date=17.03.2025, transformedSubjects=16:17,18,19:20,21:22,23,24,25, transformedDate=2025:2, description=<p>Candidates are expected to produce this admission card to the Supervisor/Invigilator/Examiner at the Examination Hall. This form&nbsp;&nbsp;&nbsp;should be filled and signed by the candidates in the presence of the Supervisor/Invigilator/Examiner every time a paper test is taken. The&nbsp;Supervisor/Invigilator/Examiner is expected to authenticate the signature of the candidate by placing his/her initials in the appropriate column. Students are requested to hand over the admission card to the Supervisor on the last day of the paper.</p>, instructions=<p><strong><u>Instructions</u></strong></p><ol><li>No candidate shall be admitted to the Examination hall without this card.</li><li>If any candidate loses this admission card, he/she shall obtain a duplicate Admission Card on payment of Rs.150/-</li><li>Every candidate shall produce his/her Identity Card at every paper/Practical Examination he/she sits for.</li><li>Any unauthorized documents, notes &amp; bags should not be taken into the Examinations.</li><li>When unable to be present for any part of the Examination, it should be notified to me&nbsp;<strong><u>immediately in writing</u></strong>&nbsp;. No appeals will be considered later without this timely notification.</li></ol>, provider=<p>Senior Asst. Registrar</p><p>Examination &amp; Student Admission</p>', '2025-03-17 07:49:21'),
+(267, 'Admission created or updated for batch_id=17, generated_date=17.03.2025, transformedSubjects=16:17,18,19:20,21:22,23,24,25, transformedDate=2025:2, description=<p>Candidates are expected to produce this admission card to the Supervisor/Invigilator/Examiner at the Examination Hall. This form&nbsp;&nbsp;&nbsp;should be filled and signed by the candidates in the presence of the Supervisor/Invigilator/Examiner every time a paper test is taken. The&nbsp;Supervisor/Invigilator/Examiner is expected to authenticate the signature of the candidate by placing his/her initials in the appropriate column. Students are requested to hand over the admission card to the Supervisor on the last day of the paper.</p>, instructions=<p><strong><u>Instructions</u></strong></p><ol><li>No candidate shall be admitted to the Examination hall without this card.</li><li>If any candidate loses this admission card, he/she shall obtain a duplicate Admission Card on payment of Rs.150/-</li><li>Every candidate shall produce his/her Identity Card at every paper/Practical Examination he/she sits for.</li><li>Any unauthorized documents, notes &amp; bags should not be taken into the Examinations.</li><li>When unable to be present for any part of the Examination, it should be notified to me&nbsp;<strong><u>immediately in writing</u></strong>&nbsp;. No appeals will be considered later without this timely notification.</li></ol>, provider=<p>Senior Asst. Registrar</p><p>Examination &amp; Student Admission</p>', '2025-03-17 11:05:52'),
+(268, 'Admission created or updated for batch_id=17, generated_date=17.03.2025, transformedSubjects=16:17,18,19:20,21:22,23,24,25, transformedDate=2025:2, description=<p>Candidates are expected to produce this admission card to the Supervisor/Invigilator/Examiner at the Examination Hall. This form&nbsp;&nbsp;&nbsp;should be filled and signed by the candidates in the presence of the Supervisor/Invigilator/Examiner every time a paper test is taken. The&nbsp;Supervisor/Invigilator/Examiner is expected to authenticate the signature of the candidate by placing his/her initials in the appropriate column. Students are requested to hand over the admission card to the Supervisor on the last day of the paper.</p>, instructions=<p><strong><u>Instructions</u></strong></p><ol><li>No candidate shall be admitted to the Examination hall without this card.</li><li>If any candidate loses this admission card, he/she shall obtain a duplicate Admission Card on payment of Rs.150/-</li><li>Every candidate shall produce his/her Identity Card at every paper/Practical Examination he/she sits for.</li><li>Any unauthorized documents, notes &amp; bags should not be taken into the Examinations.</li><li>When unable to be present for any part of the Examination, it should be notified to me&nbsp;<strong><u>immediately in writing</u></strong>&nbsp;. No appeals will be considered later without this timely notification.</li></ol>, provider=<p>Senior Asst. Registrar</p><p>Examination &amp; Student Admission</p>', '2025-03-17 12:06:02'),
+(269, 'Admission created or updated for batch_id=17, generated_date=17.03.2025, transformedSubjects=16:17,18,19:20,21:22,23,24,25, transformedDate=2025:2, description=<p>Candidates are expected to produce this admission card to the Supervisor/Invigilator/Examiner at the Examination Hall. This form&nbsp;&nbsp;&nbsp;should be filled and signed by the candidates in the presence of the Supervisor/Invigilator/Examiner every time a paper test is taken. The&nbsp;Supervisor/Invigilator/Examiner is expected to authenticate the signature of the candidate by placing his/her initials in the appropriate column. Students are requested to hand over the admission card to the Supervisor on the last day of the paper.</p>, instructions=<p><strong><u>Instructions</u></strong></p><ol><li>No candidate shall be admitted to the Examination hall without this card.</li><li>If any candidate loses this admission card, he/she shall obtain a duplicate Admission Card on payment of Rs.150/-</li><li>Every candidate shall produce his/her Identity Card at every paper/Practical Examination he/she sits for.</li><li>Any unauthorized documents, notes &amp; bags should not be taken into the Examinations.</li><li>When unable to be present for any part of the Examination, it should be notified to me&nbsp;<strong><u>immediately in writing</u></strong>&nbsp;. No appeals will be considered later without this timely notification.</li></ol>, provider=<p>Senior Asst. Registrar</p><p>Examination &amp; Student Admission</p>', '2025-03-17 12:39:57'),
+(270, 'Admission created or updated for batch_id=17, generated_date=17.03.2025, transformedSubjects=16:17,18,19:20,21:22,23,24,25, transformedDate=2025:2, description=<p>Candidates are expected to produce this admission card to the Supervisor/Invigilator/Examiner at the Examination Hall. This form&nbsp;&nbsp;&nbsp;should be filled and signed by the candidates in the presence of the Supervisor/Invigilator/Examiner every time a paper test is taken. The&nbsp;Supervisor/Invigilator/Examiner is expected to authenticate the signature of the candidate by placing his/her initials in the appropriate column. Students are requested to hand over the admission card to the Supervisor on the last day of the paper.</p>, instructions=<p><strong><u>Instructions</u></strong></p><ol><li>No candidate shall be admitted to the Examination hall without this card.</li><li>If any candidate loses this admission card, he/she shall obtain a duplicate Admission Card on payment of Rs.150/-</li><li>Every candidate shall produce his/her Identity Card at every paper/Practical Examination he/she sits for.</li><li>Any unauthorized documents, notes &amp; bags should not be taken into the Examinations.</li><li>When unable to be present for any part of the Examination, it should be notified to me&nbsp;<strong><u>immediately in writing</u></strong>&nbsp;. No appeals will be considered later without this timely notification.</li></ol>, provider=<p>Senior Asst. Registrar</p><p>Examination &amp; Student Admission</p>', '2025-03-17 13:02:37'),
+(271, 'Admission created or updated for batch_id=17, generated_date=17.03.2025, transformedSubjects=16:17,18,19:20,21:22,23,24,25, transformedDate=2025:2, description=<p>Candidates are expected to produce this admission card to the Supervisor/Invigilator/Examiner at the Examination Hall. This form&nbsp;&nbsp;&nbsp;should be filled and signed by the candidates in the presence of the Supervisor/Invigilator/Examiner every time a paper test is taken. The&nbsp;Supervisor/Invigilator/Examiner is expected to authenticate the signature of the candidate by placing his/her initials in the appropriate column. Students are requested to hand over the admission card to the Supervisor on the last day of the paper.</p>, instructions=<p><strong><u>Instructions</u></strong></p><ol><li>No candidate shall be admitted to the Examination hall without this card.</li><li>If any candidate loses this admission card, he/she shall obtain a duplicate Admission Card on payment of Rs.150/-</li><li>Every candidate shall produce his/her Identity Card at every paper/Practical Examination he/she sits for.</li><li>Any unauthorized documents, notes &amp; bags should not be taken into the Examinations.</li><li>When unable to be present for any part of the Examination, it should be notified to me&nbsp;<strong><u>immediately in writing</u></strong>&nbsp;. No appeals will be considered later without this timely notification.</li></ol>, provider=<p>Senior Asst. Registrar</p><p>Examination &amp; Student Admission</p>', '2025-03-17 13:04:46'),
+(272, 'Batch time period inserted or updated for batch_id=17 to students_end=2025-03-21T13:35, lecturers_end=2025-03-23T17:33, hod_end=2025-03-25T12:36, dean_end=2025-03-27T17:06', '2025-03-17 14:51:01'),
+(273, 'Batch updated with batch_id=17, application_open=2025-03-19T19:10, sub_ids=16,17,18,19,20,21,22,23,24,25, m_ids=1,2,1,4,5,8,2,1,4,5', '2025-03-17 14:51:01'),
+(274, 'Batch time period inserted or updated for batch_id=17 to students_end=2025-03-15T13:35, lecturers_end=2025-03-16T17:33, hod_end=2025-03-25T12:36, dean_end=2025-03-27T17:06', '2025-03-17 15:56:47'),
+(275, 'Batch time period inserted or updated for batch_id=17 to students_end=2025-03-15T13:35, lecturers_end=2025-03-16T17:33, hod_end=2025-03-16T12:36, dean_end=2025-03-27T17:06', '2025-03-17 16:10:35'),
+(276, 'Batch time period inserted or updated for batch_id=17 to students_end=2025-03-15T13:35, lecturers_end=2025-03-23T17:33, hod_end=2025-03-25T12:36, dean_end=2025-03-27T17:06', '2025-03-17 16:31:40'),
+(277, 'Batch time period inserted or updated for batch_id=17 to students_end=2025-03-18T13:35, lecturers_end=2025-03-23T17:33, hod_end=2025-03-25T12:36, dean_end=2025-03-27T17:06', '2025-03-17 17:02:40'),
+(278, 'Batch updated with batch_id=17, application_open=2025-03-18T19:10, sub_ids=16,17,18,19,20,21,22,23,24,25, m_ids=1,2,1,4,5,8,2,1,4,5', '2025-03-17 17:04:57'),
+(279, 'Batch time period inserted or updated for batch_id=17 to students_end=2025-03-19T13:35, lecturers_end=2025-03-23T17:33, hod_end=2025-03-25T12:36, dean_end=2025-03-27T17:06', '2025-03-17 17:04:57'),
+(280, 'Batch updated with batch_id=17, application_open=2025-03-19T19:10, sub_ids=16,17,18,19,20,21,22,23,24,25, m_ids=1,2,1,4,5,8,2,1,4,5', '2025-03-18 12:46:40'),
+(281, 'Batch time period inserted or updated for batch_id=17 to students_end=2025-03-17T13:35, lecturers_end=2025-03-23T17:33, hod_end=2025-03-25T12:36, dean_end=2025-03-27T17:06', '2025-03-18 12:46:40'),
+(282, 'Batch updated with batch_id=17, application_open=2025-03-19T19:10, sub_ids=16,17,18,19,20,21,22,23,24,25, m_ids=1,2,1,4,5,8,2,1,4,5', '2025-03-18 19:26:55'),
+(283, 'Batch time period inserted or updated for batch_id=17 to students_end=2025-03-20T13:35, lecturers_end=2025-03-23T17:33, hod_end=2025-03-25T12:36, dean_end=2025-03-27T17:06', '2025-03-18 19:26:55'),
+(284, 'Batch time period inserted or updated for batch_id=17 to students_end=2025-03-20T13:35, lecturers_end=2025-03-23T17:33, hod_end=2025-03-25T12:36, dean_end=2025-03-18T17:06', '2025-03-18 19:31:14'),
+(285, 'Batch time period inserted or updated for batch_id=17 to students_end=2025-03-20T13:35, lecturers_end=2025-03-18T17:33, hod_end=2025-03-25T12:36, dean_end=2025-03-18T17:06', '2025-03-18 20:04:39'),
+(286, 'Batch time period inserted or updated for batch_id=17 to students_end=2025-03-20T13:35, lecturers_end=2025-03-18T17:33, hod_end=2025-03-18T12:36, dean_end=2025-03-18T17:06', '2025-03-18 20:11:55'),
+(287, 'Batch time period inserted or updated for batch_id=17 to students_end=2025-03-20T13:35, lecturers_end=2025-03-18T17:33, hod_end=2025-03-19T12:36, dean_end=2025-03-20T17:06', '2025-03-18 20:13:11'),
+(288, 'Batch time period inserted or updated for batch_id=17 to students_end=2025-03-20T13:35, lecturers_end=2025-03-18T17:33, hod_end=2025-03-19T12:36, dean_end=2025-03-21T17:06', '2025-03-18 20:14:00'),
+(289, 'Batch time period inserted or updated for batch_id=17 to students_end=2025-03-20T13:35, lecturers_end=2025-03-18T17:33, hod_end=2025-03-18T12:36, dean_end=2025-03-21T17:06', '2025-03-18 20:14:49'),
+(290, 'Batch updated with batch_id=17, application_open=2025-03-23T19:10, sub_ids=16,17,18,19,20,21,22,23,24,25, m_ids=1,2,1,4,5,8,2,1,4,5', '2025-03-21 12:46:16'),
+(291, 'Batch time period inserted or updated for batch_id=17 to students_end=2025-03-23T13:35, lecturers_end=2025-03-18T17:33, hod_end=2025-03-18T12:36, dean_end=2025-03-21T17:06', '2025-03-21 12:46:16'),
+(292, 'Batch created with batch_id=19, application_open=2025-03-23T11:44, sub_ids=13,14,15, m_ids=2,2,4', '2025-03-22 06:14:26'),
+(293, 'Admission created or updated for batch_id=17, generated_date=17.03.2025, transformedSubjects=16:17,18,19:20,21:22,23,24,25, transformedDate=2025:2, description=<p>Candidates are expected to produce this admission card to the Supervisor/Invigilator/Examiner at the Examination Hall. This form&nbsp;&nbsp;&nbsp;should be filled and signed by the candidates in the presence of the Supervisor/Invigilator/Examiner every time a paper test is taken. The&nbsp;Supervisor/Invigilator/Examiner is expected to authenticate the signature of the candidate by placing his/her initials in the appropriate column. Students are requested to hand over the admission card to the Supervisor on the last day of the paper.</p>, instructions=<p><strong><u>Instructions</u></strong></p><ol><li>No candidate shall be admitted to the Examination hall without this card.</li><li>If any candidate loses this admission card, he/she shall obtain a duplicate Admission Card on payment of Rs.150/-</li><li>Every candidate shall produce his/her Identity Card at every paper/Practical Examination he/she sits for.</li><li>Any unauthorized documents, notes &amp; bags should not be taken into the Examinations.</li><li>When unable to be present for any part of the Examination, it should be notified to me&nbsp;<strong><u>immediately in writing</u></strong>&nbsp;. No appeals will be considered later without this timely notification.</li></ol>, provider=<p>Senior Asst. Registrar</p><p>Examination &amp; Student Admission</p>', '2025-03-22 06:37:42'),
+(294, 'Admission created or updated for batch_id=17, generated_date=17.03.2025, transformedSubjects=16:17,18,19:20,21:22,23,24,25, transformedDate=2025:2, description=<p>Candidates are expected to produce this admission card to the Supervisor/Invigilator/Examiner at the Examination Hall. This form&nbsp;&nbsp;&nbsp;should be filled and signed by the candidates in the presence of the Supervisor/Invigilator/Examiner every time a paper test is taken. The&nbsp;Supervisor/Invigilator/Examiner is expected to authenticate the signature of the candidate by placing his/her initials in the appropriate column. Students are requested to hand over the admission card to the Supervisor on the last day of the paper.</p>, instructions=<p><strong><u>Instructions</u></strong></p><ol><li>No candidate shall be admitted to the Examination hall without this card.</li><li>If any candidate loses this admission card, he/she shall obtain a duplicate Admission Card on payment of Rs.150/-</li><li>Every candidate shall produce his/her Identity Card at every paper/Practical Examination he/she sits for.</li><li>Any unauthorized documents, notes &amp; bags should not be taken into the Examinations.</li><li>When unable to be present for any part of the Examination, it should be notified to me&nbsp;<strong><u>immediately in writing</u></strong>&nbsp;. No appeals will be considered later without this timely notification.</li></ol>, provider=<p>Senior Asst. Registrar</p><p>Examination &amp; Student Admission</p>', '2025-03-22 06:39:22'),
+(295, 'Batch created with batch_id=20, application_open=2025-03-27T18:17, sub_ids=13,14,15, m_ids=2,5,5', '2025-03-24 12:47:48');
+INSERT INTO `admin_log` (`id`, `description`, `date_time`) VALUES
+(296, 'Batch created with batch_id=21, application_open=2025-03-25T19:32, sub_ids=13,14,15, m_ids=4,1,7', '2025-03-24 14:02:59'),
+(297, 'Batch created with batch_id=22, application_open=2025-03-26T21:49, students_end=2025-03-27T21:49, lecturers_end=2025-03-28T21:49, hod_end=2025-03-29T21:49, dean_end=2025-03-30T21:49, sub_ids=13,14,15, m_ids=2,1,5', '2025-03-24 16:19:50'),
+(298, 'Batch updated with batch_id=22, application_open=2025-03-26T21:49, students_end=2025-03-27T21:49, lecturers_end=2025-03-28T21:49, hod_end=2025-03-29T21:49, dean_end=2025-03-30T21:49, sub_ids=13,14,15, m_ids=2,1,5', '2025-03-24 16:20:27'),
+(299, 'Batch updated with batch_id=22, application_open=2025-03-27T21:49, students_end=2025-03-27T21:49, lecturers_end=2025-03-28T21:49, hod_end=2025-03-29T21:49, dean_end=2025-03-30T21:49, sub_ids=13,14,15, m_ids=2,1,5', '2025-03-24 16:20:41'),
+(300, 'Batch updated with batch_id=22, application_open=2025-03-27T21:49, students_end=2025-03-27T21:49, lecturers_end=2025-03-28T21:49, hod_end=2025-03-30T21:49, dean_end=2025-03-30T21:49, sub_ids=13,14,15, m_ids=2,1,5', '2025-03-24 16:20:55'),
+(301, 'Batch created with batch_id=23, application_open=2025-03-26T23:07, students_end=2025-03-27T23:08, lecturers_end=2025-03-28T23:08, hod_end=2025-03-29T23:08, dean_end=2025-03-30T23:08, sub_ids=13,14,15, m_ids=2,4,5', '2025-03-25 17:38:37'),
+(302, 'Batch updated with batch_id=23, application_open=2025-03-26T23:07, students_end=2025-03-27T23:08, lecturers_end=2025-03-28T23:08, hod_end=2025-03-29T23:08, dean_end=2025-03-30T23:08, sub_ids=13,14,15, m_ids=2,4,5', '2025-03-25 17:40:29'),
+(303, 'Batch created with batch_id=24, application_open=2025-03-28T23:14, students_end=2025-03-29T23:14, lecturers_end=2025-03-29T23:14, hod_end=2025-03-29T23:14, dean_end=2025-03-29T23:14, sub_ids=13,14,15, m_ids=1,2,4', '2025-03-25 17:45:00'),
+(304, 'Batch students updated for batch_id=24, droped=, inserted=76,77', '2025-03-26 09:03:01'),
+(305, 'Batch students updated for batch_id=24, droped=, inserted=78', '2025-03-26 09:04:52'),
+(306, 'Batch students updated for batch_id=24, droped=, inserted=79', '2025-03-26 09:14:25'),
+(307, 'Batch time period inserted or updated for batch_id=24 to students_end=2025-03-29T23:14, lecturers_end=2025-03-29T23:14, hod_end=2025-03-29T23:14, dean_end=2025-03-25T23:14', '2025-03-26 09:37:53'),
+(308, 'Medical or Resit Student for batch_id=24, sub_id=13, s_id=80, type=M', '2025-03-26 19:41:58'),
+(309, 'Medical or Resit Student for batch_id=24, sub_id=15, s_id=80, type=M', '2025-03-26 19:42:48'),
+(310, 'Medical or Resit Student for batch_id=24, sub_id=14, s_id=80, type=M', '2025-03-26 19:55:17'),
+(311, 'Medical or Resit Student for batch_id=24, sub_id=14, s_id=80, type=R', '2025-03-26 19:56:43'),
+(312, 'Medical or Resit Student for batch_id=24, sub_id=13, s_id=80, type=M', '2025-03-26 20:00:42'),
+(313, 'Medical or Resit Student for batch_id=24, sub_id=14, s_id=80, type=R', '2025-03-26 20:00:42'),
+(314, 'Medical or Resit Student for batch_id=24, sub_id=15, s_id=80, type=M', '2025-03-26 20:00:42');
 
 -- --------------------------------------------------------
 
@@ -2844,7 +3339,7 @@ CREATE TABLE `admission` (
 --
 
 INSERT INTO `admission` (`id`, `batch_id`, `generated_date`, `subject_list`, `exam_date`, `description`, `instructions`, `provider`) VALUES
-(3, 17, '05.03.2025', '16:24,20,21,19,18,22,17,25,23', '2025:2', '<p>Candidates are expected to produce this admission card to the Supervisor/Invigilator/Examiner at the Examination Hall. This form&nbsp;&nbsp;&nbsp;should be filled and signed by the candidates in the presence of the Supervisor/Invigilator/Examiner every time a paper test is taken. The&nbsp;Supervisor/Invigilator/Examiner is expected to authenticate the signature of the candidate by placing his/her initials in the appropriate column. Students are requested to hand over the admission card to the Supervisor on the last day of the paper.</p>', '<p><strong><u>Instructions</u></strong></p><ol><li>No candidate shall be admitted to the Examination hall without this card.</li><li>If any candidate loses this admission card, he/she shall obtain a duplicate Admission Card on payment of Rs.150/-</li><li>Every candidate shall produce his/her Identity Card at every paper/Practical Examination he/she sits for.</li><li>Any unauthorized documents, notes &amp; bags should not be taken into the Examinations.</li><li>When unable to be present for any part of the Examination, it should be notified to me&nbsp;<strong><u>immediately in writing</u></strong>&nbsp;. No appeals will be considered later without this timely notification.</li></ol>', '<p>Senior Asst. Registrar</p><p>Examination &amp; Student Admission</p>');
+(4, 17, '17.03.2025', '16:17,18,19:20,21:22,23,24,25', '2025:2', '<p>Candidates are expected to produce this admission card to the Supervisor/Invigilator/Examiner at the Examination Hall. This form&nbsp;&nbsp;&nbsp;should be filled and signed by the candidates in the presence of the Supervisor/Invigilator/Examiner every time a paper test is taken. The&nbsp;Supervisor/Invigilator/Examiner is expected to authenticate the signature of the candidate by placing his/her initials in the appropriate column. Students are requested to hand over the admission card to the Supervisor on the last day of the paper.</p>', '<p><strong><u>Instructions</u></strong></p><ol><li>No candidate shall be admitted to the Examination hall without this card.</li><li>If any candidate loses this admission card, he/she shall obtain a duplicate Admission Card on payment of Rs.150/-</li><li>Every candidate shall produce his/her Identity Card at every paper/Practical Examination he/she sits for.</li><li>Any unauthorized documents, notes &amp; bags should not be taken into the Examinations.</li><li>When unable to be present for any part of the Examination, it should be notified to me&nbsp;<strong><u>immediately in writing</u></strong>&nbsp;. No appeals will be considered later without this timely notification.</li></ol>', '<p>Senior Asst. Registrar</p><p>Examination &amp; Student Admission</p>');
 
 -- --------------------------------------------------------
 
@@ -2859,6 +3354,13 @@ CREATE TABLE `attendance` (
   `description` text NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
+--
+-- Dumping data for table `attendance`
+--
+
+INSERT INTO `attendance` (`id`, `batch_id`, `exam_date`, `description`) VALUES
+(2, 17, '2025:2', '<p>Supervisors are kindly requested to mark absentees clearly \"ABSENT\" and \"✔\" those Present. One copy is to be returned under separate cover to the Deputy Registrar and one to be enclosed in the relevant packet of answer script, when answer scripts separately for each of a paper it is necessary to enclose a copy each of the attendance list in each packet.</p>');
+
 -- --------------------------------------------------------
 
 --
@@ -2869,6 +3371,10 @@ CREATE TABLE `batch` (
   `batch_id` int(11) NOT NULL,
   `batch_code` varchar(100) NOT NULL,
   `deg_id` int(11) NOT NULL,
+  `academic_year` varchar(50) NOT NULL,
+  `level` int(11) NOT NULL,
+  `sem` int(11) NOT NULL,
+  `application_open` datetime NOT NULL DEFAULT current_timestamp(),
   `description` varchar(500) NOT NULL,
   `status` varchar(50) NOT NULL DEFAULT 'true'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
@@ -2877,9 +3383,15 @@ CREATE TABLE `batch` (
 -- Dumping data for table `batch`
 --
 
-INSERT INTO `batch` (`batch_id`, `batch_code`, `deg_id`, `description`, `status`) VALUES
-(17, '2023IT31', 14, '16,17,18,19,20,21,22,23,24,25', 'true'),
-(18, '2027TICT11', 7, '13,14,15', 'true');
+INSERT INTO `batch` (`batch_id`, `batch_code`, `deg_id`, `academic_year`, `level`, `sem`, `application_open`, `description`, `status`) VALUES
+(17, '2023IT31', 14, '2023', 3, 1, '2025-03-20 19:10:00', '16,17,18,19,20,21,22,23,24,25', 'true'),
+(18, '2027TICT11', 7, '2027', 1, 1, '2025-03-28 13:47:50', '13,14,15', 'true'),
+(19, '2023TICT11', 7, '', 0, 0, '2025-03-28 11:44:00', '13,14,15', 'true'),
+(20, '2099TICT11', 7, '', 1, 1, '2025-03-27 18:17:00', '13,14,15', 'true'),
+(21, '2087TICT11', 7, '', 1, 1, '2025-03-27 19:32:00', '13,14,15', 'true'),
+(22, '2067TICT11', 7, '', 1, 1, '2025-03-27 21:49:00', '13,14,15', 'true'),
+(23, '2078TICT11', 7, '2078', 1, 1, '2025-03-26 23:07:00', '13,14,15', 'true'),
+(24, '2033TICT11', 7, '2033', 1, 1, '2025-03-25 23:14:00', '13,14,15', 'true');
 
 -- --------------------------------------------------------
 
@@ -2912,7 +3424,9 @@ INSERT INTO `batch_17_students` (`id`, `s_id`, `applied_to_exam`, `admission_rea
 (1, 7, 'false', 'false', '80', '95.3', '98', '70', '100', '100', '95', '100', '67.7', '75'),
 (2, 8, 'false', 'false', '40', '67.8', '100', '80', '89', '76', '56.7', '78.9', '45.6', '0'),
 (3, 9, 'false', 'false', '60', '100', '70', '50', '0', '66.7', '67.8', '36.7', '37.8', '67.8'),
-(4, 10, 'false', 'false', '50.5', '100', '27.5', '50', '90', '78.9', '76.2', '54.6', '100', '43.5');
+(4, 10, 'false', 'false', '50.5', '100', '27.5', '50', '90', '78.9', '76.2', '54.6', '100', '43.5'),
+(7, 11, 'true', '', '', '', '', '', '', '', '', '', '', ''),
+(8, 12, 'true', '', '', '', '', '', '', '', '', '', '', '');
 
 -- --------------------------------------------------------
 
@@ -2933,7 +3447,9 @@ CREATE TABLE `batch_17_sub_16` (
 INSERT INTO `batch_17_sub_16` (`s_id`, `eligibility`, `exam_type`) VALUES
 (7, 'true', 'P'),
 (13, 'false', 'M'),
-(7, 'true', 'P');
+(7, 'true', 'P'),
+(12, 'false', 'P'),
+(11, 'true', 'P');
 
 -- --------------------------------------------------------
 
@@ -2954,7 +3470,8 @@ CREATE TABLE `batch_17_sub_17` (
 INSERT INTO `batch_17_sub_17` (`s_id`, `eligibility`, `exam_type`) VALUES
 (7, 'true', 'P'),
 (26, 'true', 'M'),
-(7, 'true', 'P');
+(7, 'true', 'P'),
+(12, 'false', 'P');
 
 -- --------------------------------------------------------
 
@@ -2975,7 +3492,9 @@ CREATE TABLE `batch_17_sub_18` (
 INSERT INTO `batch_17_sub_18` (`s_id`, `eligibility`, `exam_type`) VALUES
 (7, 'false', 'P'),
 (18, 'true', 'R'),
-(7, 'false', 'P');
+(7, 'false', 'P'),
+(12, 'false', 'P'),
+(11, 'false', 'P');
 
 -- --------------------------------------------------------
 
@@ -2996,7 +3515,8 @@ CREATE TABLE `batch_17_sub_19` (
 INSERT INTO `batch_17_sub_19` (`s_id`, `eligibility`, `exam_type`) VALUES
 (7, 'false', 'P'),
 (18, 'true', 'R'),
-(7, 'false', 'P');
+(7, 'false', 'P'),
+(12, 'false', 'P');
 
 -- --------------------------------------------------------
 
@@ -3017,7 +3537,9 @@ CREATE TABLE `batch_17_sub_20` (
 INSERT INTO `batch_17_sub_20` (`s_id`, `eligibility`, `exam_type`) VALUES
 (7, 'false', 'P'),
 (18, 'false', 'R'),
-(7, 'false', 'P');
+(7, 'false', 'P'),
+(12, 'false', 'P'),
+(11, 'false', 'P');
 
 -- --------------------------------------------------------
 
@@ -3038,7 +3560,9 @@ CREATE TABLE `batch_17_sub_21` (
 INSERT INTO `batch_17_sub_21` (`s_id`, `eligibility`, `exam_type`) VALUES
 (7, 'false', 'P'),
 (13, 'false', 'M'),
-(7, 'false', 'P');
+(7, 'false', 'P'),
+(12, 'false', 'P'),
+(11, 'false', 'P');
 
 -- --------------------------------------------------------
 
@@ -3058,7 +3582,9 @@ CREATE TABLE `batch_17_sub_22` (
 
 INSERT INTO `batch_17_sub_22` (`s_id`, `eligibility`, `exam_type`) VALUES
 (7, 'true', 'P'),
-(7, 'true', 'P');
+(7, 'true', 'P'),
+(12, 'false', 'P'),
+(11, 'false', 'P');
 
 -- --------------------------------------------------------
 
@@ -3078,7 +3604,9 @@ CREATE TABLE `batch_17_sub_23` (
 
 INSERT INTO `batch_17_sub_23` (`s_id`, `eligibility`, `exam_type`) VALUES
 (7, 'true', 'P'),
-(7, 'true', 'P');
+(7, 'true', 'P'),
+(12, 'false', 'P'),
+(11, 'false', 'P');
 
 -- --------------------------------------------------------
 
@@ -3098,7 +3626,9 @@ CREATE TABLE `batch_17_sub_24` (
 
 INSERT INTO `batch_17_sub_24` (`s_id`, `eligibility`, `exam_type`) VALUES
 (7, 'false', 'P'),
-(7, 'false', 'P');
+(7, 'false', 'P'),
+(12, 'false', 'P'),
+(11, 'false', 'P');
 
 -- --------------------------------------------------------
 
@@ -3118,7 +3648,9 @@ CREATE TABLE `batch_17_sub_25` (
 
 INSERT INTO `batch_17_sub_25` (`s_id`, `eligibility`, `exam_type`) VALUES
 (7, 'false', 'P'),
-(7, 'false', 'P');
+(7, 'false', 'P'),
+(12, 'false', 'P'),
+(11, 'false', 'P');
 
 -- --------------------------------------------------------
 
@@ -3134,6 +3666,13 @@ CREATE TABLE `batch_18_students` (
   `sub_14` varchar(50) NOT NULL,
   `sub_15` varchar(50) NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Dumping data for table `batch_18_students`
+--
+
+INSERT INTO `batch_18_students` (`id`, `s_id`, `applied_to_exam`, `sub_13`, `sub_14`, `sub_15`) VALUES
+(1, 76, 'false', '', '', '');
 
 -- --------------------------------------------------------
 
@@ -3171,12 +3710,369 @@ CREATE TABLE `batch_18_sub_15` (
 -- --------------------------------------------------------
 
 --
+-- Table structure for table `batch_19_students`
+--
+
+CREATE TABLE `batch_19_students` (
+  `id` int(11) NOT NULL,
+  `s_id` int(11) NOT NULL,
+  `applied_to_exam` varchar(50) DEFAULT 'false',
+  `sub_13` varchar(50) NOT NULL,
+  `sub_14` varchar(50) NOT NULL,
+  `sub_15` varchar(50) NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `batch_19_sub_13`
+--
+
+CREATE TABLE `batch_19_sub_13` (
+  `id` int(11) NOT NULL,
+  `s_id` int(11) NOT NULL,
+  `eligibility` varchar(50) NOT NULL,
+  `exam_type` varchar(10) NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `batch_19_sub_14`
+--
+
+CREATE TABLE `batch_19_sub_14` (
+  `id` int(11) NOT NULL,
+  `s_id` int(11) NOT NULL,
+  `eligibility` varchar(50) NOT NULL,
+  `exam_type` varchar(10) NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `batch_19_sub_15`
+--
+
+CREATE TABLE `batch_19_sub_15` (
+  `id` int(11) NOT NULL,
+  `s_id` int(11) NOT NULL,
+  `eligibility` varchar(50) NOT NULL,
+  `exam_type` varchar(10) NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `batch_20_students`
+--
+
+CREATE TABLE `batch_20_students` (
+  `id` int(11) NOT NULL,
+  `s_id` int(11) NOT NULL,
+  `applied_to_exam` varchar(50) DEFAULT 'false',
+  `sub_13` varchar(50) NOT NULL,
+  `sub_14` varchar(50) NOT NULL,
+  `sub_15` varchar(50) NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `batch_20_sub_13`
+--
+
+CREATE TABLE `batch_20_sub_13` (
+  `id` int(11) NOT NULL,
+  `s_id` int(11) NOT NULL,
+  `eligibility` varchar(50) NOT NULL,
+  `exam_type` varchar(10) NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `batch_20_sub_14`
+--
+
+CREATE TABLE `batch_20_sub_14` (
+  `id` int(11) NOT NULL,
+  `s_id` int(11) NOT NULL,
+  `eligibility` varchar(50) NOT NULL,
+  `exam_type` varchar(10) NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `batch_20_sub_15`
+--
+
+CREATE TABLE `batch_20_sub_15` (
+  `id` int(11) NOT NULL,
+  `s_id` int(11) NOT NULL,
+  `eligibility` varchar(50) NOT NULL,
+  `exam_type` varchar(10) NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `batch_21_students`
+--
+
+CREATE TABLE `batch_21_students` (
+  `id` int(11) NOT NULL,
+  `s_id` int(11) NOT NULL,
+  `applied_to_exam` varchar(50) DEFAULT 'false',
+  `sub_13` varchar(50) NOT NULL,
+  `sub_14` varchar(50) NOT NULL,
+  `sub_15` varchar(50) NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `batch_21_sub_13`
+--
+
+CREATE TABLE `batch_21_sub_13` (
+  `id` int(11) NOT NULL,
+  `s_id` int(11) NOT NULL,
+  `eligibility` varchar(50) NOT NULL,
+  `exam_type` varchar(10) NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `batch_21_sub_14`
+--
+
+CREATE TABLE `batch_21_sub_14` (
+  `id` int(11) NOT NULL,
+  `s_id` int(11) NOT NULL,
+  `eligibility` varchar(50) NOT NULL,
+  `exam_type` varchar(10) NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `batch_21_sub_15`
+--
+
+CREATE TABLE `batch_21_sub_15` (
+  `id` int(11) NOT NULL,
+  `s_id` int(11) NOT NULL,
+  `eligibility` varchar(50) NOT NULL,
+  `exam_type` varchar(10) NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `batch_22_students`
+--
+
+CREATE TABLE `batch_22_students` (
+  `id` int(11) NOT NULL,
+  `s_id` int(11) NOT NULL,
+  `applied_to_exam` varchar(50) DEFAULT 'false',
+  `sub_13` varchar(50) NOT NULL,
+  `sub_14` varchar(50) NOT NULL,
+  `sub_15` varchar(50) NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `batch_22_sub_13`
+--
+
+CREATE TABLE `batch_22_sub_13` (
+  `id` int(11) NOT NULL,
+  `s_id` int(11) NOT NULL,
+  `eligibility` varchar(50) NOT NULL,
+  `exam_type` varchar(10) NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `batch_22_sub_14`
+--
+
+CREATE TABLE `batch_22_sub_14` (
+  `id` int(11) NOT NULL,
+  `s_id` int(11) NOT NULL,
+  `eligibility` varchar(50) NOT NULL,
+  `exam_type` varchar(10) NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `batch_22_sub_15`
+--
+
+CREATE TABLE `batch_22_sub_15` (
+  `id` int(11) NOT NULL,
+  `s_id` int(11) NOT NULL,
+  `eligibility` varchar(50) NOT NULL,
+  `exam_type` varchar(10) NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `batch_23_students`
+--
+
+CREATE TABLE `batch_23_students` (
+  `id` int(11) NOT NULL,
+  `s_id` int(11) NOT NULL,
+  `applied_to_exam` varchar(50) DEFAULT 'false',
+  `sub_13` varchar(50) NOT NULL,
+  `sub_14` varchar(50) NOT NULL,
+  `sub_15` varchar(50) NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `batch_23_sub_13`
+--
+
+CREATE TABLE `batch_23_sub_13` (
+  `id` int(11) NOT NULL,
+  `s_id` int(11) NOT NULL,
+  `eligibility` varchar(50) NOT NULL,
+  `exam_type` varchar(10) NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `batch_23_sub_14`
+--
+
+CREATE TABLE `batch_23_sub_14` (
+  `id` int(11) NOT NULL,
+  `s_id` int(11) NOT NULL,
+  `eligibility` varchar(50) NOT NULL,
+  `exam_type` varchar(10) NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `batch_23_sub_15`
+--
+
+CREATE TABLE `batch_23_sub_15` (
+  `id` int(11) NOT NULL,
+  `s_id` int(11) NOT NULL,
+  `eligibility` varchar(50) NOT NULL,
+  `exam_type` varchar(10) NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `batch_24_students`
+--
+
+CREATE TABLE `batch_24_students` (
+  `id` int(11) NOT NULL,
+  `s_id` int(11) NOT NULL,
+  `applied_to_exam` varchar(50) DEFAULT 'false',
+  `sub_13` varchar(50) NOT NULL,
+  `sub_14` varchar(50) NOT NULL,
+  `sub_15` varchar(50) NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Dumping data for table `batch_24_students`
+--
+
+INSERT INTO `batch_24_students` (`id`, `s_id`, `applied_to_exam`, `sub_13`, `sub_14`, `sub_15`) VALUES
+(1, 76, 'true', '', '', ''),
+(2, 77, 'false', '', '', ''),
+(3, 78, 'false', '', '', ''),
+(4, 79, 'false', '', '', '');
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `batch_24_sub_13`
+--
+
+CREATE TABLE `batch_24_sub_13` (
+  `id` int(11) NOT NULL,
+  `s_id` int(11) NOT NULL,
+  `eligibility` varchar(50) NOT NULL,
+  `exam_type` varchar(10) NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Dumping data for table `batch_24_sub_13`
+--
+
+INSERT INTO `batch_24_sub_13` (`id`, `s_id`, `eligibility`, `exam_type`) VALUES
+(2, 76, 'true', 'P'),
+(4, 80, 'true', 'M');
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `batch_24_sub_14`
+--
+
+CREATE TABLE `batch_24_sub_14` (
+  `id` int(11) NOT NULL,
+  `s_id` int(11) NOT NULL,
+  `eligibility` varchar(50) NOT NULL,
+  `exam_type` varchar(10) NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Dumping data for table `batch_24_sub_14`
+--
+
+INSERT INTO `batch_24_sub_14` (`id`, `s_id`, `eligibility`, `exam_type`) VALUES
+(7, 80, 'true', 'R');
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `batch_24_sub_15`
+--
+
+CREATE TABLE `batch_24_sub_15` (
+  `id` int(11) NOT NULL,
+  `s_id` int(11) NOT NULL,
+  `eligibility` varchar(50) NOT NULL,
+  `exam_type` varchar(10) NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Dumping data for table `batch_24_sub_15`
+--
+
+INSERT INTO `batch_24_sub_15` (`id`, `s_id`, `eligibility`, `exam_type`) VALUES
+(5, 76, 'false', 'P'),
+(7, 80, 'true', 'M');
+
+-- --------------------------------------------------------
+
+--
 -- Table structure for table `batch_curriculum_lecturer`
 --
 
 CREATE TABLE `batch_curriculum_lecturer` (
   `id` int(11) NOT NULL,
-  `batch_id` varchar(50) NOT NULL,
+  `batch_id` int(11) NOT NULL,
   `sub_id` int(11) NOT NULL,
   `m_id` int(11) NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
@@ -3186,19 +4082,37 @@ CREATE TABLE `batch_curriculum_lecturer` (
 --
 
 INSERT INTO `batch_curriculum_lecturer` (`id`, `batch_id`, `sub_id`, `m_id`) VALUES
-(103, '17', 16, 1),
-(104, '17', 17, 2),
-(105, '17', 18, 1),
-(106, '17', 19, 4),
-(107, '17', 20, 5),
-(108, '17', 21, 1),
-(109, '17', 22, 2),
-(110, '17', 23, 1),
-(111, '17', 24, 4),
-(112, '17', 25, 5),
-(126, '18', 13, 1),
-(127, '18', 14, 2),
-(128, '18', 15, 4);
+(126, 18, 13, 1),
+(127, 18, 14, 2),
+(128, 18, 15, 4),
+(359, 17, 16, 1),
+(360, 17, 17, 2),
+(361, 17, 18, 1),
+(362, 17, 19, 4),
+(363, 17, 20, 5),
+(364, 17, 21, 8),
+(365, 17, 22, 2),
+(366, 17, 23, 1),
+(367, 17, 24, 4),
+(368, 17, 25, 5),
+(369, 19, 13, 2),
+(370, 19, 14, 2),
+(371, 19, 15, 4),
+(372, 20, 13, 2),
+(373, 20, 14, 5),
+(374, 20, 15, 5),
+(375, 21, 13, 4),
+(376, 21, 14, 1),
+(377, 21, 15, 7),
+(387, 22, 13, 2),
+(388, 22, 14, 1),
+(389, 22, 15, 5),
+(393, 23, 13, 2),
+(394, 23, 14, 4),
+(395, 23, 15, 5),
+(396, 24, 13, 1),
+(397, 24, 14, 2),
+(398, 24, 15, 4);
 
 -- --------------------------------------------------------
 
@@ -3212,18 +4126,31 @@ CREATE TABLE `batch_time_periods` (
   `user_type` enum('5','4','3','2') NOT NULL,
   `end_date` datetime NOT NULL,
   `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
-  `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp()
+  `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  `mail_sent` tinyint(1) DEFAULT 0
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
 -- Dumping data for table `batch_time_periods`
 --
 
-INSERT INTO `batch_time_periods` (`id`, `batch_id`, `user_type`, `end_date`, `created_at`, `updated_at`) VALUES
-(59, 17, '5', '2025-02-27 13:35:00', '2024-12-26 06:41:12', '2025-03-02 17:41:07'),
-(60, 17, '4', '2025-02-28 17:33:00', '2024-12-26 06:41:12', '2025-03-02 17:41:07'),
-(99, 17, '3', '2025-03-06 12:36:00', '2025-02-28 12:06:23', '2025-03-05 20:38:13'),
-(100, 17, '2', '2025-03-07 17:36:00', '2025-02-28 12:06:23', '2025-03-05 20:38:06');
+INSERT INTO `batch_time_periods` (`id`, `batch_id`, `user_type`, `end_date`, `created_at`, `updated_at`, `mail_sent`) VALUES
+(59, 17, '5', '2025-03-23 13:35:00', '2024-12-26 06:41:12', '2025-03-21 12:46:15', 1),
+(60, 17, '4', '2025-03-18 17:33:00', '2024-12-26 06:41:12', '2025-03-18 20:04:39', 1),
+(99, 17, '3', '2025-03-18 12:36:00', '2025-02-28 12:06:23', '2025-03-18 20:14:49', 1),
+(100, 17, '2', '2025-03-21 17:06:00', '2025-02-28 12:06:23', '2025-03-18 20:14:00', 0),
+(393, 22, '5', '2025-03-27 21:49:00', '2025-03-24 16:19:50', '2025-03-28 08:35:08', 1),
+(394, 22, '4', '2025-03-28 21:49:00', '2025-03-24 16:19:50', '2025-03-24 16:19:50', 0),
+(395, 22, '3', '2025-03-30 21:49:00', '2025-03-24 16:19:50', '2025-03-24 16:20:55', 0),
+(396, 22, '2', '2025-03-30 21:49:00', '2025-03-24 16:19:50', '2025-03-24 16:19:50', 0),
+(409, 23, '5', '2025-03-27 23:08:00', '2025-03-25 17:38:36', '2025-03-26 19:35:04', 1),
+(410, 23, '4', '2025-03-28 23:08:00', '2025-03-25 17:38:36', '2025-03-25 17:38:36', 0),
+(411, 23, '3', '2025-03-29 23:08:00', '2025-03-25 17:38:36', '2025-03-25 17:38:36', 0),
+(412, 23, '2', '2025-03-30 23:08:00', '2025-03-25 17:38:36', '2025-03-25 17:38:36', 0),
+(417, 24, '5', '2025-03-29 23:14:00', '2025-03-25 17:45:00', '2025-03-26 09:35:06', 1),
+(418, 24, '4', '2025-03-29 23:14:00', '2025-03-25 17:45:00', '2025-03-25 17:45:00', 0),
+(419, 24, '3', '2025-03-29 23:14:00', '2025-03-25 17:45:00', '2025-03-25 17:45:00', 0),
+(420, 24, '2', '2025-03-25 23:14:00', '2025-03-25 17:45:00', '2025-03-26 09:37:53', 0);
 
 -- --------------------------------------------------------
 
@@ -3300,7 +4227,7 @@ INSERT INTO `degree` (`deg_id`, `deg_name`, `short`, `levels`, `no_of_sem_per_ye
 (11, 'Information Technology (Honours)', 'ITH', '4', '2', 'true'),
 (12, 'Business Management  in Human Resource (Honours)', 'BSHR', '1:2:3:4', '2', 'true'),
 (13, 'Business Management in Project Management (Honours)', 'PM', '1:2:3:4', '2', 'true'),
-(14, 'Information Technology', 'IT', '1:2:3', '2', 'true'),
+(14, 'Information Technology', 'IT', '1:2:3', '8', 'true'),
 (15, 'Business Management in Business Economics', 'BSBE', '1:2:3', '2', 'true'),
 (16, 'Business Management in Finance and Accountancy', 'BSFA', '1:2:3', '2', 'true'),
 (17, 'Business Management in Management and Entrepreneurship', 'BSME', '1:2:3', '2', 'true'),
@@ -3396,7 +4323,35 @@ INSERT INTO `eligibility_log` (`id`, `user_id`, `s_id`, `exam`, `sub_id`, `statu
 (77, 24, 7, 17, 21, 'true', 'false', 'for all', '2025-03-05 20:39:05'),
 (78, 24, 13, 17, 21, 'true', 'false', 'for all', '2025-03-05 20:39:05'),
 (79, 24, 7, 17, 20, 'true', 'false', 'gfhgj', '2025-03-05 20:41:52'),
-(80, 24, 18, 17, 20, 'true', 'false', 'imraan', '2025-03-05 20:42:29');
+(80, 24, 18, 17, 20, 'true', 'false', 'imraan', '2025-03-05 20:42:29'),
+(82, 21, 13, 17, 16, 'true', 'false', 'hii', '2025-03-16 19:49:14'),
+(83, 167, 11, 17, 16, 'false', 'true', 'just', '2025-03-22 06:39:13'),
+(84, 167, 76, 24, 13, 'false', 'true', 'hii', '2025-03-27 13:10:50');
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `entry_summary`
+--
+
+CREATE TABLE `entry_summary` (
+  `id` int(11) NOT NULL,
+  `s_id` int(11) NOT NULL,
+  `academic_year` varchar(50) NOT NULL,
+  `level` int(11) NOT NULL,
+  `sem` int(11) NOT NULL,
+  `proper_subs` text DEFAULT NULL,
+  `medical_subs` text DEFAULT NULL,
+  `resit_subs` text DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Dumping data for table `entry_summary`
+--
+
+INSERT INTO `entry_summary` (`id`, `s_id`, `academic_year`, `level`, `sem`, `proper_subs`, `medical_subs`, `resit_subs`) VALUES
+(9, 76, '2033', 1, 1, '13,15', NULL, NULL),
+(11, 80, '2033', 1, 1, NULL, '13,15', '14');
 
 -- --------------------------------------------------------
 
@@ -3421,7 +4376,12 @@ INSERT INTO `faculty` (`f_id`, `f_name`, `user_id`, `contact_no`, `status`) VALU
 (9, 'Business Studies', 22, '0246865433', 'true'),
 (10, 'Technological Studies', 23, '0249060438', 'true'),
 (13, 'Applied Science', 137, 'h', 'f'),
-(14, 'a', 138, 'h', 'f');
+(14, 'a', 138, 'h', 'f'),
+(15, 'sfsdf', 155, 'dfdfdf', 'true'),
+(16, 'ssskk', 156, 'fegrgh', 'true'),
+(19, 'sgfg', 159, 'd234', 'true'),
+(21, 'tutyu', 161, 'huuiyu89', 'true'),
+(22, 'gjuhjk', 162, 'tyty', 'true');
 
 -- --------------------------------------------------------
 
@@ -3471,7 +4431,8 @@ INSERT INTO `manager` (`m_id`, `user_id`) VALUES
 (3, 125),
 (4, 126),
 (5, 127),
-(7, 143);
+(7, 143),
+(8, 154);
 
 -- --------------------------------------------------------
 
@@ -3480,7 +4441,6 @@ INSERT INTO `manager` (`m_id`, `user_id`) VALUES
 --
 
 CREATE TABLE `manager_detail` (
-  `id` int(11) NOT NULL,
   `m_id` int(11) NOT NULL,
   `name` varchar(500) NOT NULL,
   `contact_no` varchar(100) NOT NULL,
@@ -3491,13 +4451,14 @@ CREATE TABLE `manager_detail` (
 -- Dumping data for table `manager_detail`
 --
 
-INSERT INTO `manager_detail` (`id`, `m_id`, `name`, `contact_no`, `status`) VALUES
-(1, 1, 'S.Vadivel', '94770345120', 'true'),
-(2, 2, 'J.Fernando', '94775587965', 'true'),
-(3, 3, 'S.Rajesh', '95728754932', 'false'),
-(4, 4, 'T.Anuradha', '94753267382', 'true'),
-(5, 5, 'N.Sivakumar', '94772584321', 'true'),
-(7, 7, 'Waseem', '67876845634', 'true');
+INSERT INTO `manager_detail` (`m_id`, `name`, `contact_no`, `status`) VALUES
+(1, 'S.Vadivel', '94770345120', 'true'),
+(2, 'J.Fernando', '94775587965', 'true'),
+(3, 'S.Rajesh', '95728754932', 'false'),
+(4, 'T.Anuradha', '94753267382', 'true'),
+(5, 'N.Sivakumar', '94772584321', 'true'),
+(7, 'Waseem', '67876845634', 'true'),
+(8, '55', '55', 'true');
 
 -- --------------------------------------------------------
 
@@ -3629,7 +4590,15 @@ INSERT INTO `student` (`s_id`, `user_id`) VALUES
 (99, 139),
 (100, 140),
 (101, 141),
-(102, 142);
+(102, 142),
+(103, 144),
+(104, 145),
+(104, 150),
+(105, 151),
+(106, 152),
+(107, 163),
+(108, 164),
+(109, 165);
 
 -- --------------------------------------------------------
 
@@ -3651,7 +4620,14 @@ CREATE TABLE `students_log` (
 INSERT INTO `students_log` (`id`, `user_id`, `exam`, `date_time`) VALUES
 (1, 37, 17, '2025-01-16 18:55:42'),
 (2, 34, 17, '2025-01-17 21:11:32'),
-(3, 34, 17, '2025-02-27 08:02:36');
+(3, 34, 17, '2025-02-27 08:02:36'),
+(4, 39, 17, '2025-03-18 19:29:47'),
+(5, 38, 17, '2025-03-22 06:08:42'),
+(6, 103, 24, '2025-03-26 09:27:59'),
+(7, 103, 24, '2025-03-26 19:14:21'),
+(8, 103, 24, '2025-03-26 19:27:26'),
+(9, 103, 24, '2025-03-26 19:28:23'),
+(10, 103, 24, '2025-03-26 19:29:43');
 
 -- --------------------------------------------------------
 
@@ -3660,7 +4636,6 @@ INSERT INTO `students_log` (`id`, `user_id`, `exam`, `date_time`) VALUES
 --
 
 CREATE TABLE `student_detail` (
-  `id` int(11) NOT NULL,
   `s_id` int(11) NOT NULL,
   `name` varchar(150) NOT NULL,
   `index_num` varchar(50) NOT NULL,
@@ -3674,100 +4649,108 @@ CREATE TABLE `student_detail` (
 -- Dumping data for table `student_detail`
 --
 
-INSERT INTO `student_detail` (`id`, `s_id`, `name`, `index_num`, `contact_no`, `batch_ids`, `f_id`, `status`) VALUES
-(7, 7, 'KELUM B.Η.Τ', 'IT 16001', '11111111111', '17', 8, 'true'),
-(8, 8, 'JAYASINGHE M.D.', 'IT 16002', '', '17', 8, 'true'),
-(9, 9, 'WICKRAMASINGHE S.N.', 'IT 16003', '1345435', '17', 8, 'true'),
-(10, 10, 'KARUNITHAA M.', 'IT 15001', '', '17', 8, 'true'),
-(11, 11, 'BANUJA V.', '', '', '', 8, 'true'),
-(12, 12, 'DEWMINI AV', '', '', '', 8, 'true'),
-(13, 13, 'GUNASEKARA HDD ', '', '', '', 8, 'true'),
-(14, 14, 'ABEYSINGHEA.AK.C', '', '', '', 8, 'true'),
-(15, 15, 'PEIRIS P.PH.B.', '', '', '', 8, 'true'),
-(16, 16, 'PERERAKA.S.LD', '', '', '', 8, 'true'),
-(17, 17, 'Udisha W.H.I.', '', '', '', 8, 'true'),
-(18, 18, 'Imran BM', 'IT 16004', '', '', 8, 'true'),
-(19, 19, 'Shanmugarajah D', '', '', '', 8, 'true'),
-(20, 20, 'Muniweera K.G.U.K.', '', '', '', 8, 'true'),
-(21, 21, 'Lourdes Jellorine C', '', '', '', 8, 'true'),
-(22, 22, 'Nalawansa U.K', '', '', '', 8, 'true'),
-(23, 23, 'Devakumar P.', '', '', '', 8, 'true'),
-(24, 24, 'Senevirathne S.A', '', '', '', 8, 'true'),
-(25, 25, 'Jegatheeswaran V.', 'IT 16005', '', '', 8, 'true'),
-(26, 26, 'Shahla A.A.F.S.', 'IT 16006', '', '', 8, 'true'),
-(27, 27, 'RANAWEERA T.R.M.D.S', '', '', '', 8, 'true'),
-(28, 28, 'SUDARAKA R.A.V', '', '', '', 8, 'true'),
-(29, 29, 'KARIYAWASAM K.K.S.M.V', '', '', '', 8, 'true'),
-(30, 30, 'WEERAKOON W.A.D.L', '', '', '', 8, 'true'),
-(31, 31, 'LAKSHIKA R.M.K', '', '', '', 8, 'true'),
-(32, 32, 'WICKRAMASINGHE W.M.D.L', '', '', '', 8, 'true'),
-(33, 33, 'DISSANAYAKA D.M.I.L', '', '', '', 8, 'true'),
-(34, 34, 'CHITHRAKA P.R', '', '', '', 8, 'true'),
-(35, 35, 'DISSANAYAKA D.M.S.P ', '', '', '', 8, 'true'),
-(36, 36, 'PATHIRANA W.P.S.I', '', '', '', 8, 'true'),
-(37, 37, 'KAWMADI L.G.A.S', '', '', '', 8, 'true'),
-(38, 38, 'THARUSHI K.H.P', '', '', '', 8, 'true'),
-(39, 39, 'CHANDRASIRI W.H.T.S', '', '', '', 8, 'true'),
-(40, 40, 'HEMANTHA H.B.G.P.N', '', '', '', 8, 'true'),
-(41, 41, 'HERATH H.P.N.I', '', '', '', 8, 'true'),
-(42, 42, 'BUDDHIMA H.M.H', '', '', '', 8, 'true'),
-(43, 43, 'MANAMPERI G.M.C', '', '', '', 8, 'true'),
-(44, 44, 'DHARMASIRI P.C.M', '', '', '', 8, 'true'),
-(45, 45, 'THILAKARATHNA D.M.I.D', '', '', '', 8, 'true'),
-(46, 46, 'DISSANAYAKA I.L', '', '', '', 8, 'true'),
-(47, 47, 'MOHOMMAD P.M.', '', '', '', 8, 'true'),
-(48, 48, 'HETTIARACHCHI T.N', '', '', '', 8, 'true'),
-(49, 49, 'RAJASINGHA G.R', '', '', '', 8, 'true'),
-(50, 50, 'THARUSHI U.K', '', '', '', 8, 'true'),
-(51, 51, 'LOKARAJA D.C', '', '', '', 8, 'true'),
-(52, 52, 'PAVANI T.D.N', '', '', '', 8, 'true'),
-(53, 53, 'RANAPATHI G.S.A', '', '', '', 8, 'true'),
-(54, 54, 'SAGARIKA D.T.W.D', '', '', '', 8, 'true'),
-(55, 55, 'KARUNARATHNA S.D', '', '', '', 8, 'true'),
-(56, 56, 'KUMARI K.L', '', '', '', 8, 'true'),
-(57, 57, 'DHARMAPRIYA G.D', '', '', '', 8, 'true'),
-(58, 58, 'SANDUNI T.L', '', '', '', 8, 'true'),
-(59, 59, 'DASSANAYAKA G.R', '', '', '', 8, 'true'),
-(60, 60, 'RANIMIKA T.S', '', '', '', 8, 'true'),
-(61, 61, 'SELVAM D.C', '', '', '', 8, 'true'),
-(62, 62, 'HETTIGODA K.A', '', '', '', 8, 'true'),
-(63, 63, 'RAJAPAKSHA R.D', '', '', '', 8, 'true'),
-(64, 64, 'NIWANDANA T.U', '', '', '', 8, 'true'),
-(65, 65, 'SENARATHNA R.L', '', '', '', 8, 'true'),
-(66, 66, 'L. Hariharan', '', '', '', 8, 'true'),
-(67, 67, 'T. Vartheeswaran', '', '', '', 8, 'true'),
-(68, 68, 'V. Varaniya', '', '', '', 8, 'true'),
-(69, 69, 'M. J. F. Ilma', '', '', '', 8, 'true'),
-(70, 70, 'M. S. K. Alwis', '', '', '', 8, 'true'),
-(71, 71, 'C. Thanushiga', '', '', '', 8, 'true'),
-(72, 72, 'B. Ushanthika', '', '', '', 8, 'true'),
-(73, 73, 'J. M. Kumari', '', '', '', 8, 'true'),
-(74, 74, 'P. Nivithashini', '', '', '', 8, 'true'),
-(75, 75, 'B. Kobika', '', '', '', 8, 'true'),
-(76, 76, 'SOORIYAARACHCHI Y.P', '', '', '', 10, 'true'),
-(77, 77, 'DARMADASA R.Y', '', '', '', 10, 'true'),
-(78, 78, 'GAYANI D.H', '', '', '', 10, 'true'),
-(79, 79, 'PALLIYAGURU G.M', '', '', '', 10, 'true'),
-(80, 80, 'PIYUMIKA D.S', '', '', '', 10, 'true'),
-(81, 81, 'RANATHUNGA D.S', '', '', '', 10, 'true'),
-(82, 82, 'KARUNATHILAKA S.D', '', '', '', 10, 'true'),
-(83, 83, 'JAYASINHA T.K', '', '', '', 10, 'true'),
-(84, 84, 'KALANI F.D', '', '', '', 10, 'true'),
-(85, 85, 'SENARATHNA R.L', '', '', '', 10, 'true'),
-(86, 86, 'DARMIKAM J.L', '', '', '', 10, 'true'),
-(87, 87, 'PERERA G.D', '', '', '', 10, 'true'),
-(88, 88, 'TANAKA S.H', '', '', '', 10, 'true'),
-(89, 89, 'DASSANAYAKA R.M', '', '', '', 10, 'true'),
-(90, 90, 'SHANIKA T.S', '', '', '', 10, 'true'),
-(91, 91, 'RANASINHA D.C', '', '', '', 10, 'true'),
-(92, 92, 'MIHIRANI K.A', '', '', '', 10, 'true'),
-(93, 93, 'RAJAPAKSHA T.N.D.R.S', '', '', '', 10, 'true'),
-(94, 94, 'JAYASIRI T.U', '', '', '', 10, 'true'),
-(95, 95, 'SENARATHNA R.L.B', '', '', '', 10, 'true'),
-(99, 99, 'Ashfak', 'A 22101', '37627446', '', 8, 'true'),
-(100, 100, 'Jallu', '', '243243535', '', 8, 'true'),
-(101, 101, 'Kamaal BBD', '', '3243534545', '', 8, 'true'),
-(102, 102, 'romee', 'IT 17002', '325354646', '', 8, 'true');
+INSERT INTO `student_detail` (`s_id`, `name`, `index_num`, `contact_no`, `batch_ids`, `f_id`, `status`) VALUES
+(1, 'rtyrtyty', '', 'sds', '', 8, 'true'),
+(7, 'KELUM B.Η.Τ', 'IT 16001', '11111111111', '17', 8, 'true'),
+(8, 'JAYASINGHE M.D.', 'IT 16002', '', '17', 8, 'true'),
+(9, 'WICKRAMASINGHE S.N.', 'IT 16003', '1345435', '17', 8, 'true'),
+(10, 'KARUNITHAA M.', 'IT 15001', '', '17', 8, 'true'),
+(11, 'BANUJA V.', 'IT 16007', '', '17', 8, 'true'),
+(12, 'DEWMINI AV', 'IT 16008', '', '17', 8, 'true'),
+(13, 'GUNASEKARA HDD ', '', '', '', 8, 'true'),
+(14, 'ABEYSINGHEA.AK.C', '', '', '', 8, 'true'),
+(15, 'PEIRIS P.PH.B.', '', '', '', 8, 'true'),
+(16, 'PERERAKA.S.LD', '', '', '', 8, 'true'),
+(17, 'Udisha W.H.I.', '', '', '', 8, 'true'),
+(18, 'Imran BM', 'IT 16004', '', '', 8, 'true'),
+(19, 'Shanmugarajah D', '', '', '', 8, 'true'),
+(20, 'Muniweera K.G.U.K.', '', '', '', 8, 'true'),
+(21, 'Lourdes Jellorine C', '', '', '', 8, 'true'),
+(22, 'Nalawansa U.K', '', '', '', 8, 'true'),
+(23, 'Devakumar P.', '', '', '', 8, 'true'),
+(24, 'Senevirathne S.A', '', '', '', 8, 'true'),
+(25, 'Jegatheeswaran V.', 'IT 16005', '', '', 8, 'true'),
+(26, 'Shahla A.A.F.S.', 'IT 16006', '', '', 8, 'true'),
+(27, 'RANAWEERA T.R.M.D.S', '', '', '', 8, 'true'),
+(28, 'SUDARAKA R.A.V', '', '', '', 8, 'true'),
+(29, 'KARIYAWASAM K.K.S.M.V', '', '', '', 8, 'true'),
+(30, 'WEERAKOON W.A.D.L', '', '', '', 8, 'true'),
+(31, 'LAKSHIKA R.M.K', '', '', '', 8, 'true'),
+(32, 'WICKRAMASINGHE W.M.D.L', '', '', '', 8, 'true'),
+(33, 'DISSANAYAKA D.M.I.L', '', '', '', 8, 'true'),
+(34, 'CHITHRAKA P.R', '', '', '', 8, 'true'),
+(35, 'DISSANAYAKA D.M.S.P ', '', '', '', 8, 'true'),
+(36, 'PATHIRANA W.P.S.I', '', '', '', 8, 'true'),
+(37, 'KAWMADI L.G.A.S', '', '', '', 8, 'true'),
+(38, 'THARUSHI K.H.P', '', '', '', 8, 'true'),
+(39, 'CHANDRASIRI W.H.T.S', '', '', '', 8, 'true'),
+(40, 'HEMANTHA H.B.G.P.N', '', '', '', 8, 'true'),
+(41, 'HERATH H.P.N.I', '', '', '', 8, 'true'),
+(42, 'BUDDHIMA H.M.H', '', '', '', 8, 'true'),
+(43, 'MANAMPERI G.M.C', '', '', '', 8, 'true'),
+(44, 'DHARMASIRI P.C.M', '', '', '', 8, 'true'),
+(45, 'THILAKARATHNA D.M.I.D', '', '', '', 8, 'true'),
+(46, 'DISSANAYAKA I.L', '', '', '', 8, 'true'),
+(47, 'MOHOMMAD P.M.', '', '', '', 8, 'true'),
+(48, 'HETTIARACHCHI T.N', '', '', '', 8, 'true'),
+(49, 'RAJASINGHA G.R', '', '', '', 8, 'true'),
+(50, 'THARUSHI U.K', '', '', '', 8, 'true'),
+(51, 'LOKARAJA D.C', '', '', '', 8, 'true'),
+(52, 'PAVANI T.D.N', '', '', '', 8, 'true'),
+(53, 'RANAPATHI G.S.A', '', '', '', 8, 'true'),
+(54, 'SAGARIKA D.T.W.D', '', '', '', 8, 'true'),
+(55, 'KARUNARATHNA S.D', '', '', '', 8, 'true'),
+(56, 'KUMARI K.L', '', '', '', 8, 'true'),
+(57, 'DHARMAPRIYA G.D', '', '', '', 8, 'true'),
+(58, 'SANDUNI T.L', '', '', '', 8, 'true'),
+(59, 'DASSANAYAKA G.R', '', '', '', 8, 'true'),
+(60, 'RANIMIKA T.S', '', '', '', 8, 'true'),
+(61, 'SELVAM D.C', '', '', '', 8, 'true'),
+(62, 'HETTIGODA K.A', '', '', '', 8, 'true'),
+(63, 'RAJAPAKSHA R.D', '', '', '', 8, 'true'),
+(64, 'NIWANDANA T.U', '', '', '', 8, 'true'),
+(65, 'SENARATHNA R.L', '', '', '', 8, 'true'),
+(66, 'L. Hariharan', '', '', '', 8, 'true'),
+(67, 'T. Vartheeswaran', '', '', '', 8, 'true'),
+(68, 'V. Varaniya', '', '', '', 8, 'true'),
+(69, 'M. J. F. Ilma', '', '', '', 8, 'true'),
+(70, 'M. S. K. Alwis', '', '', '', 8, 'true'),
+(71, 'C. Thanushiga', '', '', '', 8, 'true'),
+(72, 'B. Ushanthika', '', '', '', 8, 'true'),
+(73, 'J. M. Kumari', '', '', '', 8, 'true'),
+(74, 'P. Nivithashini', '', '', '', 8, 'true'),
+(75, 'B. Kobika', '', '', '', 8, 'true'),
+(76, 'SOORIYAARACHCHI Y.P', '', '', '18,24', 10, 'true'),
+(77, 'DARMADASA R.Y', '', '', '24', 10, 'true'),
+(78, 'GAYANI D.H', '', '', '24', 10, 'true'),
+(79, 'PALLIYAGURU G.M', '', '', '24', 10, 'true'),
+(80, 'PIYUMIKA D.S', '', '', '', 10, 'true'),
+(81, 'RANATHUNGA D.S', '', '', '', 10, 'true'),
+(82, 'KARUNATHILAKA S.D', '', '', '', 10, 'true'),
+(83, 'JAYASINHA T.K', '', '', '', 10, 'true'),
+(84, 'KALANI F.D', '', '', '', 10, 'true'),
+(85, 'SENARATHNA R.L', '', '', '', 10, 'true'),
+(86, 'DARMIKAM J.L', '', '', '', 10, 'true'),
+(87, 'PERERA G.D', '', '', '', 10, 'true'),
+(88, 'TANAKA S.H', '', '', '', 10, 'true'),
+(89, 'DASSANAYAKA R.M', '', '', '', 10, 'true'),
+(90, 'SHANIKA T.S', '', '', '', 10, 'true'),
+(91, 'RANASINHA D.C', '', '', '', 10, 'true'),
+(92, 'MIHIRANI K.A', '', '', '', 10, 'true'),
+(93, 'RAJAPAKSHA T.N.D.R.S', '', '', '', 10, 'true'),
+(94, 'JAYASIRI T.U', '', '', '', 10, 'true'),
+(95, 'SENARATHNA R.L.B', '', '', '', 10, 'true'),
+(99, 'Ashfak', 'A 22101', '37627446', '', 8, 'true'),
+(100, 'Jallu', '', '243243535', '', 8, 'true'),
+(101, 'Kamaal BBD', '', '3243534545', '', 8, 'true'),
+(102, 'romee', 'IT 17002', '325354646', '', 8, 'true'),
+(103, 'ffhh', '', '11111111', '', 9, 'true'),
+(104, '222222', '222222', '222222', '', 8, 'true'),
+(105, '3', '3', '3', '', 10, 'true'),
+(106, '4', '', '4', '', 10, 'true'),
+(107, 'ry3', 'cfg3', '3', '', 8, 'true'),
+(108, 'ry4', '', '4', '', 8, 'true'),
+(109, 'dfgfgh', '', 'dfgdfg', '', 9, 'true');
 
 -- --------------------------------------------------------
 
@@ -3899,14 +4882,28 @@ INSERT INTO `user` (`user_id`, `user_name`, `email`, `password`, `role_id`, `res
 (125, 'srajesh@vau.ac.lk', 'srajesh@gmail.com', '$2b$10$aaFfvVcaiijBaq0GWUmz0ehOJEGGbWOYylDr8SbC14yPtyd/yU9MO', '4', NULL, NULL, 0, NULL),
 (126, 'tanuradha@vau.ac.lk', 'tanuradha@gmail.com', '$2b$10$r2NXOqkjKf0x./N9DLa6QuzMIbTgqeIg6H6rflSNdbM4LpjyNpvni', '4', NULL, NULL, 0, NULL),
 (127, 'nsivakumar@vau.ac.lk', 'nsivakumar@gmail.com', '$2b$10$jgFUkNuoXiR8n1nxUrkHuukjBGYtq5YLmCkPGlciuybfgFPHk3A42', '4', NULL, NULL, 0, NULL),
-(128, 'admin', 'admin@admin.com', '$2b$10$1yznppdEsLO5hniVwEGh8eUULb81bQz1gseo/05FsYGOU8j04Sy0W', '1', NULL, NULL, 0, '2025-01-17 22:34:35'),
 (137, 'v', 'v', '$2b$10$JVwXxjHQ8.ECfQwE7JYHWu17lsiMpVJzn4cJACerwXWIUKj22VisS', '2', NULL, NULL, 0, NULL),
 (138, 'v', 'v', '$2b$10$Nj2MGA7dbnuALUfS9LQn1eZ5mt3hQC2EeyMVZaTTP3ysvdHP1tPyS', '2', NULL, NULL, 0, NULL),
 (139, '2019/ASB/03', 'mohamedasfhaq1999@gmail.com', '$2b$10$Ml/Nypvd2c7NKtQj59VaN.G6pq3XsmxioSTYsITHge6juQfvHpIZy', '5', NULL, NULL, 0, NULL),
-(140, '2020/ICT/119', 'zzzahrannnldeen2@gmail.com', '$2b$10$2xr9KDlt5nAssbq8gP0yJO5Zy.mM1h2qxVx1PVQcq0m5sUvQZHEMO', '5', '7ed7c8c7b8ffad13afbb131a99ab20376c8bf8c49ccf625be991dfef8a57792b', '2025-01-19 01:57:17', 6, '2025-01-19 01:58:06'),
+(140, '2020/ICT/119', 'zzzahrannnldeen2@gmail.commm', '$2b$10$2xr9KDlt5nAssbq8gP0yJO5Zy.mM1h2qxVx1PVQcq0m5sUvQZHEMO', '5', '7ed7c8c7b8ffad13afbb131a99ab20376c8bf8c49ccf625be991dfef8a57792b', '2025-01-19 01:57:17', 6, '2025-01-19 01:58:06'),
 (141, '2022/ICT/14', 'Kamaal123@gmail.com', '$2b$10$oTahzYlAPCkgSA9FHOq6h.zVQB5sKDhiDDP9aEh5PdFYigPtntc.y', '5', NULL, NULL, 0, NULL),
 (142, '2022/ICT/15', 'romee7@gmail.com', '$2b$10$yt2M0c.uVvPJLrRC.Jvdje6AgjydpIUmd.B37RfwwSk3/AW86kCvW', '5', NULL, NULL, 0, NULL),
-(143, 'waseem@vau.ac.lk', 'waseem@gmail.com', '$2b$10$kqUrlyJ3qQYOI7Qi/9Nvf.ldlcCbEju96INyLWJqovXr/VDVIKWf6', '4', NULL, NULL, 0, NULL);
+(143, 'waseem@vau.ac.lk', 'waseem@gmail.com', '$2b$10$kqUrlyJ3qQYOI7Qi/9Nvf.ldlcCbEju96INyLWJqovXr/VDVIKWf6', '4', NULL, NULL, 0, NULL),
+(144, '23534545', '2020ict119@vau.jfn.ac.lk', '$2b$10$vby8SD/WUdDg5nx1ZNY/9.VOMeMx/KQs6Giflv7DH/i3P50KM6YiC', '5', NULL, NULL, 0, NULL),
+(145, 'wererer', 'wrewer@dg.v', '$2b$10$b/M0W.p48V4bvxy0/1JZDeEaX5pHBOD4SgZLn13bN3Ps53u6wH8du', '5', NULL, NULL, 0, NULL),
+(150, '222222', 'zzzahrannnldeen@gmail.com', '$2b$10$WAXLamE6eFXX1LuYoP/Txe3YBARPYUJb3nwRNL2qdMG4GukSwJFPO', '5', NULL, NULL, 0, NULL),
+(151, '3', 'zahranliyasdeen@gmail.com', '$2b$10$Vnz/f.vdYbPTgTBp8lxyxuDp9p6X6Vu9wx/FN2ni27b0qStTolxpa', '5', NULL, NULL, 0, NULL),
+(152, '4', 'zzzahrannnldeen2@gmail.com', '$2b$10$x0hqMF/rhcFg2lNa3yjPZOVL0xW/TH3u4esn4.fSwNpNZg1k4eUlm', '5', NULL, NULL, 0, NULL),
+(154, '55', '55@5.5', '$2b$10$LDtNk2gcuSqLb7xKnC2BquvRkUuCJuNM.peR7yyHLHQDY8ZthSqwS', '4', NULL, NULL, 0, NULL),
+(155, 'sdfdf', 'sdfdf', '$2b$10$HPM82v2KnUqaR0K7p1yfKur0r./e/jb7yFhb94G0rmj6T5QKiZBY2', '2', NULL, NULL, 0, NULL),
+(156, '1@1.1hgh', '1@1.1hgh', '$2b$10$I9TD6WZRt/.LHg0XZ2bN..ZxiLNlk6S1/ATfxFpMABcGCxp5/PSJC', '2', NULL, NULL, 0, NULL),
+(159, 'dfhgfh', 'dfhgfh', '$2b$10$xYYzZxd0xiX69s/1cCsgJ.UkS82owqCAdNq715nFdPMqm/FbpG3Zm', '2', NULL, NULL, 0, NULL),
+(161, 'd@nm.b', 'd@nm.b', '$2b$10$cdfTpvcCxOez.8qKQxnt3OpgU4auY./dqKpDqqBTYN9/zDAsoN0Vu', '2', NULL, NULL, 0, NULL),
+(162, 'dfdf@v.m', 'dfdf@v.m', '$2b$10$Wvr3lEm2GfYlz/Wa1CS9l.gcK9Y8WfoDv5USMw.CPalkqKykXbgC6', '2', NULL, NULL, 0, NULL),
+(163, '453', 'zahranliyasdeendsfdsf@gmail.com', '$2b$10$z0x6/Wa5NVTJbasGzbcS6.P8OAkXlRRaOALNnfqRtlzZ063MHz4mS', '5', NULL, NULL, 0, NULL),
+(164, 'ty4', 'zzzahrannnldeen2sddfdf@gmail.com', '$2b$10$Mx9guNLQyDVP6blYWqwEmOC6AF1PZlHlMy2HPvCVTazn8.SYu8wm6', '5', NULL, NULL, 0, NULL),
+(165, 'wredrfded', 'fdgf', '$2b$10$eHuUUp6c3v7O8geRV/03veJCZGtslMEpMI4oRkPJk0ibSUHsw3tbO', '5', NULL, NULL, 0, NULL),
+(167, 'admin', 'admin@admin.com', '$2b$10$QT09VD8N7t.sQNNP6PqAkeWxR/Yci2SXiWevM2Ly1ehq8tAObG1zu', '1', NULL, NULL, 0, NULL);
 
 --
 -- Indexes for dumped tables
@@ -3922,19 +4919,22 @@ ALTER TABLE `admin_log`
 -- Indexes for table `admission`
 --
 ALTER TABLE `admission`
-  ADD PRIMARY KEY (`id`);
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `fk_admission_batch_id` (`batch_id`);
 
 --
 -- Indexes for table `attendance`
 --
 ALTER TABLE `attendance`
-  ADD PRIMARY KEY (`id`);
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `fk_attendance_batch_id` (`batch_id`);
 
 --
 -- Indexes for table `batch`
 --
 ALTER TABLE `batch`
-  ADD PRIMARY KEY (`batch_id`);
+  ADD PRIMARY KEY (`batch_id`),
+  ADD KEY `fk_batch_deg_id` (`deg_id`);
 
 --
 -- Indexes for table `batch_17_students`
@@ -3949,10 +4949,175 @@ ALTER TABLE `batch_18_students`
   ADD PRIMARY KEY (`id`);
 
 --
+-- Indexes for table `batch_19_students`
+--
+ALTER TABLE `batch_19_students`
+  ADD PRIMARY KEY (`id`);
+
+--
+-- Indexes for table `batch_19_sub_13`
+--
+ALTER TABLE `batch_19_sub_13`
+  ADD PRIMARY KEY (`id`),
+  ADD UNIQUE KEY `s_id` (`s_id`);
+
+--
+-- Indexes for table `batch_19_sub_14`
+--
+ALTER TABLE `batch_19_sub_14`
+  ADD PRIMARY KEY (`id`),
+  ADD UNIQUE KEY `s_id` (`s_id`);
+
+--
+-- Indexes for table `batch_19_sub_15`
+--
+ALTER TABLE `batch_19_sub_15`
+  ADD PRIMARY KEY (`id`),
+  ADD UNIQUE KEY `s_id` (`s_id`);
+
+--
+-- Indexes for table `batch_20_students`
+--
+ALTER TABLE `batch_20_students`
+  ADD PRIMARY KEY (`id`);
+
+--
+-- Indexes for table `batch_20_sub_13`
+--
+ALTER TABLE `batch_20_sub_13`
+  ADD PRIMARY KEY (`id`),
+  ADD UNIQUE KEY `s_id` (`s_id`);
+
+--
+-- Indexes for table `batch_20_sub_14`
+--
+ALTER TABLE `batch_20_sub_14`
+  ADD PRIMARY KEY (`id`),
+  ADD UNIQUE KEY `s_id` (`s_id`);
+
+--
+-- Indexes for table `batch_20_sub_15`
+--
+ALTER TABLE `batch_20_sub_15`
+  ADD PRIMARY KEY (`id`),
+  ADD UNIQUE KEY `s_id` (`s_id`);
+
+--
+-- Indexes for table `batch_21_students`
+--
+ALTER TABLE `batch_21_students`
+  ADD PRIMARY KEY (`id`);
+
+--
+-- Indexes for table `batch_21_sub_13`
+--
+ALTER TABLE `batch_21_sub_13`
+  ADD PRIMARY KEY (`id`),
+  ADD UNIQUE KEY `s_id` (`s_id`);
+
+--
+-- Indexes for table `batch_21_sub_14`
+--
+ALTER TABLE `batch_21_sub_14`
+  ADD PRIMARY KEY (`id`),
+  ADD UNIQUE KEY `s_id` (`s_id`);
+
+--
+-- Indexes for table `batch_21_sub_15`
+--
+ALTER TABLE `batch_21_sub_15`
+  ADD PRIMARY KEY (`id`),
+  ADD UNIQUE KEY `s_id` (`s_id`);
+
+--
+-- Indexes for table `batch_22_students`
+--
+ALTER TABLE `batch_22_students`
+  ADD PRIMARY KEY (`id`);
+
+--
+-- Indexes for table `batch_22_sub_13`
+--
+ALTER TABLE `batch_22_sub_13`
+  ADD PRIMARY KEY (`id`),
+  ADD UNIQUE KEY `s_id` (`s_id`);
+
+--
+-- Indexes for table `batch_22_sub_14`
+--
+ALTER TABLE `batch_22_sub_14`
+  ADD PRIMARY KEY (`id`),
+  ADD UNIQUE KEY `s_id` (`s_id`);
+
+--
+-- Indexes for table `batch_22_sub_15`
+--
+ALTER TABLE `batch_22_sub_15`
+  ADD PRIMARY KEY (`id`),
+  ADD UNIQUE KEY `s_id` (`s_id`);
+
+--
+-- Indexes for table `batch_23_students`
+--
+ALTER TABLE `batch_23_students`
+  ADD PRIMARY KEY (`id`);
+
+--
+-- Indexes for table `batch_23_sub_13`
+--
+ALTER TABLE `batch_23_sub_13`
+  ADD PRIMARY KEY (`id`),
+  ADD UNIQUE KEY `s_id` (`s_id`);
+
+--
+-- Indexes for table `batch_23_sub_14`
+--
+ALTER TABLE `batch_23_sub_14`
+  ADD PRIMARY KEY (`id`),
+  ADD UNIQUE KEY `s_id` (`s_id`);
+
+--
+-- Indexes for table `batch_23_sub_15`
+--
+ALTER TABLE `batch_23_sub_15`
+  ADD PRIMARY KEY (`id`),
+  ADD UNIQUE KEY `s_id` (`s_id`);
+
+--
+-- Indexes for table `batch_24_students`
+--
+ALTER TABLE `batch_24_students`
+  ADD PRIMARY KEY (`id`);
+
+--
+-- Indexes for table `batch_24_sub_13`
+--
+ALTER TABLE `batch_24_sub_13`
+  ADD PRIMARY KEY (`id`),
+  ADD UNIQUE KEY `s_id` (`s_id`);
+
+--
+-- Indexes for table `batch_24_sub_14`
+--
+ALTER TABLE `batch_24_sub_14`
+  ADD PRIMARY KEY (`id`),
+  ADD UNIQUE KEY `s_id` (`s_id`);
+
+--
+-- Indexes for table `batch_24_sub_15`
+--
+ALTER TABLE `batch_24_sub_15`
+  ADD PRIMARY KEY (`id`),
+  ADD UNIQUE KEY `s_id` (`s_id`);
+
+--
 -- Indexes for table `batch_curriculum_lecturer`
 --
 ALTER TABLE `batch_curriculum_lecturer`
-  ADD PRIMARY KEY (`id`);
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `fk_batch_curriculum_lecturer_m_id` (`m_id`),
+  ADD KEY `fk_batch_curriculum_lecturer_sub_id` (`sub_id`),
+  ADD KEY `fk_batch_curriculum_lecturer_batch_id` (`batch_id`);
 
 --
 -- Indexes for table `batch_time_periods`
@@ -3965,7 +5130,8 @@ ALTER TABLE `batch_time_periods`
 -- Indexes for table `curriculum`
 --
 ALTER TABLE `curriculum`
-  ADD PRIMARY KEY (`sub_id`);
+  ADD PRIMARY KEY (`sub_id`),
+  ADD KEY `fk_curriculam_deg_id` (`deg_id`);
 
 --
 -- Indexes for table `degree`
@@ -3977,43 +5143,58 @@ ALTER TABLE `degree`
 -- Indexes for table `department`
 --
 ALTER TABLE `department`
-  ADD PRIMARY KEY (`d_id`);
+  ADD PRIMARY KEY (`d_id`),
+  ADD KEY `fk_department_user_id` (`user_id`);
 
 --
 -- Indexes for table `dep_deg`
 --
 ALTER TABLE `dep_deg`
-  ADD PRIMARY KEY (`d_id`,`deg_id`);
+  ADD PRIMARY KEY (`d_id`,`deg_id`),
+  ADD KEY `fk_dep_deg_deg_id` (`deg_id`);
 
 --
 -- Indexes for table `eligibility_log`
 --
 ALTER TABLE `eligibility_log`
-  ADD PRIMARY KEY (`id`);
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `fk_eligibility_log_user_id` (`user_id`),
+  ADD KEY `fk_eligibility_log_s_id` (`s_id`),
+  ADD KEY `fk_eligibility_log_sub_id` (`sub_id`);
+
+--
+-- Indexes for table `entry_summary`
+--
+ALTER TABLE `entry_summary`
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `fk_entry_summary_s_id` (`s_id`);
 
 --
 -- Indexes for table `faculty`
 --
 ALTER TABLE `faculty`
-  ADD PRIMARY KEY (`f_id`);
+  ADD PRIMARY KEY (`f_id`),
+  ADD KEY `fk_faculty_user_id` (`user_id`);
 
 --
 -- Indexes for table `fac_dep`
 --
 ALTER TABLE `fac_dep`
-  ADD PRIMARY KEY (`f_id`,`d_id`);
+  ADD PRIMARY KEY (`f_id`,`d_id`),
+  ADD KEY `fk_fac_dep_d_id` (`d_id`);
 
 --
 -- Indexes for table `manager`
 --
 ALTER TABLE `manager`
-  ADD PRIMARY KEY (`m_id`);
+  ADD PRIMARY KEY (`m_id`,`user_id`),
+  ADD KEY `fk_manager_user_id` (`user_id`);
 
 --
 -- Indexes for table `manager_detail`
 --
 ALTER TABLE `manager_detail`
-  ADD PRIMARY KEY (`id`);
+  ADD PRIMARY KEY (`m_id`);
 
 --
 -- Indexes for table `roles`
@@ -4025,25 +5206,29 @@ ALTER TABLE `roles`
 -- Indexes for table `student`
 --
 ALTER TABLE `student`
-  ADD PRIMARY KEY (`s_id`,`user_id`);
+  ADD PRIMARY KEY (`s_id`,`user_id`),
+  ADD KEY `fk_student_user_id` (`user_id`);
 
 --
 -- Indexes for table `students_log`
 --
 ALTER TABLE `students_log`
-  ADD PRIMARY KEY (`id`);
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `fk_student_log_user_id` (`user_id`);
 
 --
 -- Indexes for table `student_detail`
 --
 ALTER TABLE `student_detail`
-  ADD PRIMARY KEY (`id`);
+  ADD PRIMARY KEY (`s_id`),
+  ADD KEY `fk_student_detail_f_id` (`f_id`);
 
 --
 -- Indexes for table `user`
 --
 ALTER TABLE `user`
-  ADD PRIMARY KEY (`user_id`);
+  ADD PRIMARY KEY (`user_id`),
+  ADD KEY `fk_user_role_id` (`role_id`);
 
 --
 -- AUTO_INCREMENT for dumped tables
@@ -4053,49 +5238,193 @@ ALTER TABLE `user`
 -- AUTO_INCREMENT for table `admin_log`
 --
 ALTER TABLE `admin_log`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=98;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=315;
 
 --
 -- AUTO_INCREMENT for table `admission`
 --
 ALTER TABLE `admission`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=4;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=5;
 
 --
 -- AUTO_INCREMENT for table `attendance`
 --
 ALTER TABLE `attendance`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=3;
 
 --
 -- AUTO_INCREMENT for table `batch`
 --
 ALTER TABLE `batch`
-  MODIFY `batch_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=19;
+  MODIFY `batch_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=25;
 
 --
 -- AUTO_INCREMENT for table `batch_17_students`
 --
 ALTER TABLE `batch_17_students`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=5;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=9;
 
 --
 -- AUTO_INCREMENT for table `batch_18_students`
 --
 ALTER TABLE `batch_18_students`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
+
+--
+-- AUTO_INCREMENT for table `batch_19_students`
+--
+ALTER TABLE `batch_19_students`
   MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+--
+-- AUTO_INCREMENT for table `batch_19_sub_13`
+--
+ALTER TABLE `batch_19_sub_13`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+--
+-- AUTO_INCREMENT for table `batch_19_sub_14`
+--
+ALTER TABLE `batch_19_sub_14`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+--
+-- AUTO_INCREMENT for table `batch_19_sub_15`
+--
+ALTER TABLE `batch_19_sub_15`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+--
+-- AUTO_INCREMENT for table `batch_20_students`
+--
+ALTER TABLE `batch_20_students`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+--
+-- AUTO_INCREMENT for table `batch_20_sub_13`
+--
+ALTER TABLE `batch_20_sub_13`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+--
+-- AUTO_INCREMENT for table `batch_20_sub_14`
+--
+ALTER TABLE `batch_20_sub_14`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+--
+-- AUTO_INCREMENT for table `batch_20_sub_15`
+--
+ALTER TABLE `batch_20_sub_15`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+--
+-- AUTO_INCREMENT for table `batch_21_students`
+--
+ALTER TABLE `batch_21_students`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+--
+-- AUTO_INCREMENT for table `batch_21_sub_13`
+--
+ALTER TABLE `batch_21_sub_13`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+--
+-- AUTO_INCREMENT for table `batch_21_sub_14`
+--
+ALTER TABLE `batch_21_sub_14`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+--
+-- AUTO_INCREMENT for table `batch_21_sub_15`
+--
+ALTER TABLE `batch_21_sub_15`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+--
+-- AUTO_INCREMENT for table `batch_22_students`
+--
+ALTER TABLE `batch_22_students`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+--
+-- AUTO_INCREMENT for table `batch_22_sub_13`
+--
+ALTER TABLE `batch_22_sub_13`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+--
+-- AUTO_INCREMENT for table `batch_22_sub_14`
+--
+ALTER TABLE `batch_22_sub_14`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+--
+-- AUTO_INCREMENT for table `batch_22_sub_15`
+--
+ALTER TABLE `batch_22_sub_15`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+--
+-- AUTO_INCREMENT for table `batch_23_students`
+--
+ALTER TABLE `batch_23_students`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+--
+-- AUTO_INCREMENT for table `batch_23_sub_13`
+--
+ALTER TABLE `batch_23_sub_13`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+--
+-- AUTO_INCREMENT for table `batch_23_sub_14`
+--
+ALTER TABLE `batch_23_sub_14`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+--
+-- AUTO_INCREMENT for table `batch_23_sub_15`
+--
+ALTER TABLE `batch_23_sub_15`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+--
+-- AUTO_INCREMENT for table `batch_24_students`
+--
+ALTER TABLE `batch_24_students`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=5;
+
+--
+-- AUTO_INCREMENT for table `batch_24_sub_13`
+--
+ALTER TABLE `batch_24_sub_13`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=5;
+
+--
+-- AUTO_INCREMENT for table `batch_24_sub_14`
+--
+ALTER TABLE `batch_24_sub_14`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=8;
+
+--
+-- AUTO_INCREMENT for table `batch_24_sub_15`
+--
+ALTER TABLE `batch_24_sub_15`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=8;
 
 --
 -- AUTO_INCREMENT for table `batch_curriculum_lecturer`
 --
 ALTER TABLE `batch_curriculum_lecturer`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=129;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=399;
 
 --
 -- AUTO_INCREMENT for table `batch_time_periods`
 --
 ALTER TABLE `batch_time_periods`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=177;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=425;
 
 --
 -- AUTO_INCREMENT for table `curriculum`
@@ -4119,59 +5448,157 @@ ALTER TABLE `department`
 -- AUTO_INCREMENT for table `eligibility_log`
 --
 ALTER TABLE `eligibility_log`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=81;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=85;
+
+--
+-- AUTO_INCREMENT for table `entry_summary`
+--
+ALTER TABLE `entry_summary`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=12;
 
 --
 -- AUTO_INCREMENT for table `faculty`
 --
 ALTER TABLE `faculty`
-  MODIFY `f_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=15;
-
---
--- AUTO_INCREMENT for table `manager`
---
-ALTER TABLE `manager`
-  MODIFY `m_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=8;
+  MODIFY `f_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=23;
 
 --
 -- AUTO_INCREMENT for table `manager_detail`
 --
 ALTER TABLE `manager_detail`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=8;
-
---
--- AUTO_INCREMENT for table `student`
---
-ALTER TABLE `student`
-  MODIFY `s_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=103;
+  MODIFY `m_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=9;
 
 --
 -- AUTO_INCREMENT for table `students_log`
 --
 ALTER TABLE `students_log`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=4;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=11;
 
 --
 -- AUTO_INCREMENT for table `student_detail`
 --
 ALTER TABLE `student_detail`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=103;
+  MODIFY `s_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=111;
 
 --
 -- AUTO_INCREMENT for table `user`
 --
 ALTER TABLE `user`
-  MODIFY `user_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=144;
+  MODIFY `user_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=168;
 
 --
 -- Constraints for dumped tables
 --
 
 --
+-- Constraints for table `admission`
+--
+ALTER TABLE `admission`
+  ADD CONSTRAINT `fk_admission_batch_id` FOREIGN KEY (`batch_id`) REFERENCES `batch` (`batch_id`);
+
+--
+-- Constraints for table `attendance`
+--
+ALTER TABLE `attendance`
+  ADD CONSTRAINT `fk_attendance_batch_id` FOREIGN KEY (`batch_id`) REFERENCES `batch` (`batch_id`);
+
+--
+-- Constraints for table `batch`
+--
+ALTER TABLE `batch`
+  ADD CONSTRAINT `fk_batch_deg_id` FOREIGN KEY (`deg_id`) REFERENCES `degree` (`deg_id`);
+
+--
+-- Constraints for table `batch_curriculum_lecturer`
+--
+ALTER TABLE `batch_curriculum_lecturer`
+  ADD CONSTRAINT `fk_batch_curriculum_lecturer_batch_id` FOREIGN KEY (`batch_id`) REFERENCES `batch` (`batch_id`),
+  ADD CONSTRAINT `fk_batch_curriculum_lecturer_m_id` FOREIGN KEY (`m_id`) REFERENCES `manager_detail` (`m_id`),
+  ADD CONSTRAINT `fk_batch_curriculum_lecturer_sub_id` FOREIGN KEY (`sub_id`) REFERENCES `curriculum` (`sub_id`);
+
+--
 -- Constraints for table `batch_time_periods`
 --
 ALTER TABLE `batch_time_periods`
-  ADD CONSTRAINT `batch_time_periods_ibfk_1` FOREIGN KEY (`batch_id`) REFERENCES `batch` (`batch_id`);
+  ADD CONSTRAINT `fk_batch_time_periods_batch_id` FOREIGN KEY (`batch_id`) REFERENCES `batch` (`batch_id`);
+
+--
+-- Constraints for table `curriculum`
+--
+ALTER TABLE `curriculum`
+  ADD CONSTRAINT `fk_curriculam_deg_id` FOREIGN KEY (`deg_id`) REFERENCES `degree` (`deg_id`);
+
+--
+-- Constraints for table `department`
+--
+ALTER TABLE `department`
+  ADD CONSTRAINT `fk_department_user_id` FOREIGN KEY (`user_id`) REFERENCES `user` (`user_id`);
+
+--
+-- Constraints for table `dep_deg`
+--
+ALTER TABLE `dep_deg`
+  ADD CONSTRAINT `fk_dep_deg_d_id` FOREIGN KEY (`d_id`) REFERENCES `department` (`d_id`),
+  ADD CONSTRAINT `fk_dep_deg_deg_id` FOREIGN KEY (`deg_id`) REFERENCES `degree` (`deg_id`);
+
+--
+-- Constraints for table `eligibility_log`
+--
+ALTER TABLE `eligibility_log`
+  ADD CONSTRAINT `fk_eligibility_log_s_id` FOREIGN KEY (`s_id`) REFERENCES `student_detail` (`s_id`),
+  ADD CONSTRAINT `fk_eligibility_log_sub_id` FOREIGN KEY (`sub_id`) REFERENCES `curriculum` (`sub_id`),
+  ADD CONSTRAINT `fk_eligibility_log_user_id` FOREIGN KEY (`user_id`) REFERENCES `user` (`user_id`);
+
+--
+-- Constraints for table `entry_summary`
+--
+ALTER TABLE `entry_summary`
+  ADD CONSTRAINT `fk_entry_summary_s_id` FOREIGN KEY (`s_id`) REFERENCES `student_detail` (`s_id`);
+
+--
+-- Constraints for table `faculty`
+--
+ALTER TABLE `faculty`
+  ADD CONSTRAINT `fk_faculty_user_id` FOREIGN KEY (`user_id`) REFERENCES `user` (`user_id`);
+
+--
+-- Constraints for table `fac_dep`
+--
+ALTER TABLE `fac_dep`
+  ADD CONSTRAINT `fk_fac_dep_d_id` FOREIGN KEY (`d_id`) REFERENCES `department` (`d_id`),
+  ADD CONSTRAINT `fk_fac_dep_f_id` FOREIGN KEY (`f_id`) REFERENCES `faculty` (`f_id`);
+
+--
+-- Constraints for table `manager`
+--
+ALTER TABLE `manager`
+  ADD CONSTRAINT `fk_manager_m_id` FOREIGN KEY (`m_id`) REFERENCES `manager_detail` (`m_id`),
+  ADD CONSTRAINT `fk_manager_user_id` FOREIGN KEY (`user_id`) REFERENCES `user` (`user_id`);
+
+--
+-- Constraints for table `student`
+--
+ALTER TABLE `student`
+  ADD CONSTRAINT `fk_student_s_id` FOREIGN KEY (`s_id`) REFERENCES `student_detail` (`s_id`),
+  ADD CONSTRAINT `fk_student_user_id` FOREIGN KEY (`user_id`) REFERENCES `user` (`user_id`);
+
+--
+-- Constraints for table `students_log`
+--
+ALTER TABLE `students_log`
+  ADD CONSTRAINT `fk_student_log_user_id` FOREIGN KEY (`user_id`) REFERENCES `user` (`user_id`);
+
+--
+-- Constraints for table `student_detail`
+--
+ALTER TABLE `student_detail`
+  ADD CONSTRAINT `fk_student_detail_f_id` FOREIGN KEY (`f_id`) REFERENCES `faculty` (`f_id`);
+
+--
+-- Constraints for table `user`
+--
+ALTER TABLE `user`
+  ADD CONSTRAINT `fk_user_role_id` FOREIGN KEY (`role_id`) REFERENCES `roles` (`role_id`);
 COMMIT;
 
 /*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;

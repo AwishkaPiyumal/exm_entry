@@ -30,6 +30,7 @@ const Model = ({ editId, isOpen, setIsOpen, modalRef, setEditId }) => {
     no_of_sem_per_year: "2",
   });
   const [btnEnable, setBtnEnable] = useState(false);
+  const [levelMore, setLevelMore] = useState(false);
   const queryClient = useQueryClient();
 
   const { status, mutate } = useMutation({
@@ -37,10 +38,12 @@ const Model = ({ editId, isOpen, setIsOpen, modalRef, setEditId }) => {
     onSuccess: (res) => {
       queryClient.invalidateQueries(["degreesExtra"]);
       setEditId("");
+      setLevelMore(false);
       toast.success(res.message);
     },
     onError: (err) => {
       setEditId("");
+      setLevelMore(false);
       toast.error("Operation failed");
     },
   });
@@ -148,6 +151,7 @@ const Model = ({ editId, isOpen, setIsOpen, modalRef, setEditId }) => {
                     levels: [],
                     no_of_sem_per_year: "2",
                   });
+                  setLevelMore(false);
                   setEditId("");
                 }}
               />
@@ -236,38 +240,49 @@ const Model = ({ editId, isOpen, setIsOpen, modalRef, setEditId }) => {
 
               <div className="grid grid-cols-4 gap-4">
                 <Label className="text-right">Levels</Label>
-                <div className="items-top flex col-span-3 items-center gap-4">
-                  {[1, 2, 3, 4, 5].map((item) => (
-                    <div
-                      className="items-top flex space-x-2 items-center"
-                      key={item}
-                    >
-                      <Checkbox
-                        id={`level${item}`}
-                        onCheckedChange={(e) => {
-                          e
-                            ? onFormDataChanged(`level:${item}`)
-                            : setFormData((curData) => ({
-                                ...curData,
-                                levels: curData.levels.filter(
-                                  (ele) => ele != item
-                                ),
-                              }));
-                        }}
-                        checked={
-                          formData.levels?.includes(item.toString()) || ""
-                        }
-                      />
-                      <div className="grid gap-1.5 leading-none">
-                        <label
-                          htmlFor={`level${item}`}
-                          className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
-                        >
-                          {item}
-                        </label>
+
+                <div className="items-top flex col-span-3 items-center gap-4 flex-wrap">
+                  {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+                    .slice(0, !levelMore ? 4 : undefined)
+                    .map((item) => (
+                      <div
+                        className="items-top flex space-x-2 items-center"
+                        key={item}
+                      >
+                        <Checkbox
+                          id={`level${item}`}
+                          onCheckedChange={(e) => {
+                            e
+                              ? onFormDataChanged(`level:${item}`)
+                              : setFormData((curData) => ({
+                                  ...curData,
+                                  levels: curData.levels.filter(
+                                    (ele) => ele != item
+                                  ),
+                                }));
+                          }}
+                          checked={
+                            formData.levels?.includes(item.toString()) || ""
+                          }
+                        />
+                        <div className="grid gap-1.5 leading-none">
+                          <label
+                            htmlFor={`level${item}`}
+                            className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+                          >
+                            {item}
+                          </label>
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    ))}
+                  {!levelMore && (
+                    <span
+                      className="text-blue-500 hover:text-blue-600 cursor-pointer"
+                      onClick={() => setLevelMore(true)}
+                    >
+                      more..
+                    </span>
+                  )}
                 </div>
               </div>
               <div className="grid grid-cols-4 items-center gap-4">

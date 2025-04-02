@@ -421,6 +421,7 @@ export const getStudentApplicationDetails = async (req, res, next) => {
         subjects: subjects.map((subject) => ({
           sub_code: subject.sub_code,
           sub_name: subject.sub_name,
+          sub_id: subject.sub_id,
           attendance: attendance[`sub_${subject.sub_id}`] || "N/A",
         })),
       };
@@ -693,7 +694,6 @@ export const updateEligibility = async (req, res, next) => {
   try {
     const conn = await pool.getConnection();
     try {
-
       await conn.query("CALL UpdateEligibility(?, ?, ?, ?, ?, ?);", [
         user_id,
         s_id,
@@ -703,7 +703,6 @@ export const updateEligibility = async (req, res, next) => {
         role_id,
       ]);
 
-      
       await conn.query("CALL LogEligibilityChange(?, ?, ?, ?, ?, ?, ?);", [
         user_id,
         s_id,
@@ -714,7 +713,6 @@ export const updateEligibility = async (req, res, next) => {
         remark,
       ]);
 
-      
       await conn.commit();
 
       return res

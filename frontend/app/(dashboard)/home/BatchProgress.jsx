@@ -4,7 +4,7 @@ import { Progress } from "@/components/ui/progress";
 import { useEffect, useState } from "react";
 
 const BatchProgress = ({ task }) => {
-  const [progress, setProgress] = useState(5);
+  const [progress, setProgress] = useState(1);
   const [content, setContent] = useState("");
   const [barColor, setBarColor] = useState("");
 
@@ -44,7 +44,7 @@ const BatchProgress = ({ task }) => {
       default:
         newVal = 0;
         setBarColor("");
-        setContent("Setup Deadlines!");
+        setContent("Application not opened yet!");
         break;
     }
 

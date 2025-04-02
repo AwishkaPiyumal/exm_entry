@@ -85,10 +85,10 @@ const IndexModel = ({
   return (
     <>
       {isIndexOpen && (
-        <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-50">
+        <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-50 p-2 sm:p-0">
           <div
             ref={indexModalRef}
-            className="bg-white rounded-lg shadow-lg w-[50vw] p-6"
+            className="bg-white rounded-lg shadow-lg sm:w-[50vw] p-6"
           >
             <div className="flex justify-between items-center border-b pb-2 mb-4">
               <h3 className="text-lg font-semibold">Index no missing!</h3>
@@ -98,6 +98,7 @@ const IndexModel = ({
                 onClick={() => {
                   setIsIndexOpen(false);
                   setFormData({});
+                  queryClient.invalidateQueries(["lastAssignedIndexNumber"]);
                 }}
               />
             </div>
@@ -135,7 +136,14 @@ const IndexModel = ({
                       name="course"
                       className="w-full"
                       placeholder="IT"
-                      onChange={(e) => onFormDataChanged(e)}
+                      onChange={(e) => {
+                        setFormData((cur) => ({
+                          ...cur,
+                          startsFrom: "",
+                          batch: "",
+                        }));
+                        onFormDataChanged(e);
+                      }}
                       onBlur={(e) => {
                         e.target.value = e.target.value.trim();
                         if (formData.course && formData.batch) {
@@ -151,7 +159,10 @@ const IndexModel = ({
                       name="batch"
                       className="w-full"
                       placeholder="16"
-                      onChange={(e) => onFormDataChanged(e)}
+                      onChange={(e) => {
+                        setFormData((cur) => ({ ...cur, startsFrom: "" }));
+                        onFormDataChanged(e);
+                      }}
                       onBlur={(e) => {
                         e.target.value = e.target.value.trim();
                         if (formData.course && formData.batch) {
@@ -165,7 +176,7 @@ const IndexModel = ({
                     <input
                       id="startsFrom"
                       name="startsFrom"
-                      min={lastAssignedIndexNumberData.lastIndex + 1 || 1}
+                      min={lastAssignedIndexNumberData?.lastIndex + 1 || 1}
                       max="999"
                       className="w-full flex h-9 col-span-3 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 text-right"
                       placeholder="001"

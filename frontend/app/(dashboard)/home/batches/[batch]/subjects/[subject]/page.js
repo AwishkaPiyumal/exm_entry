@@ -10,8 +10,8 @@ const page = () => {
   const batch_id = searchParams.get("batch_id");
 
   return (
-    <div className="flex justify-end md:justify-center">
-      <div className="md:w-[70%] ">
+    <div className="flex justify-end md:justify-center overflow-hidden">
+      <div className="w-[80%] md:w-[85%] lg:w-[90%]">
         <StudentDetails sub_id={sub_id} batch_id={batch_id} />
       </div>
     </div>

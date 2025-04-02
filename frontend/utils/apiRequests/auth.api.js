@@ -1,7 +1,5 @@
 import axiosInstance from "@/lib/axiosInstance";
 import axios from "axios";
-const server = process.env.NEXT_PUBLIC_BACKEND_SERVER||"localhost";
-const port = process.env.NEXT_PUBLIC_BACKEND_PORT||"8080";
 
 export const managerRegister = async (data) => {
   const response = await axiosInstance.post("/auth/managerRegister", data);
@@ -16,7 +14,7 @@ export const studentRegister = async (data) => {
 export const multipleStudentsRegister = async (data) => {
   try {
     const response = await axios.post(
-      `http://${server}:${port}/api1/auth/multipleStudentsRegister`,
+      `/api/auth/multipleStudentsRegister`,
       data,
       {
         headers: {

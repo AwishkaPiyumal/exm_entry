@@ -4,11 +4,7 @@ import { generatePassword, hashPassword } from "../utils/functions.js";
 import mailer from "../utils/mailer.js";
 
 export const createFaculty = async (req, res, next) => {
-  let { f_name, email, contact_no, status } = req.body;
-
-  if (!status) {
-    status = "true";
-  }
+  let { f_name, email, contact_no, status = "true" } = req.body;
 
   if (!f_name || !email || !contact_no) {
     return next(errorProvider(400, "Missing required fields"));
@@ -54,8 +50,14 @@ export const createFaculty = async (req, res, next) => {
       let desc = `Faculty created with f_name=${f_name}, user_id=${user_id}, email=${email}, contact_no=${contact_no}`;
       await conn.query("CALL LogAdminAction(?);", [desc]);
 
+      await mailer(
+        email,
+        "Registration succesfull",
+        `<h2>Faculty registered to examinations</h2>
+                <h4>User name : ${email}</h4>
+                <h4>Password : ${password}</h4>`
+      );
       await conn.commit();
-      await mailer(email, email, password);
 
       return res.status(201).json({ message: "Faculty created successfully" });
     } catch (error) {
@@ -226,13 +228,18 @@ export const createDepartment = async (req, res, next) => {
       // Step 5: Link the department to the faculty
       await conn.query("CALL LinkFacultyDepartment(?, ?);", [f_id, d_id]);
 
-      let desc = `Department created with d_id=${d_id} for f_id=${f_id}, d_name=${d_name}, user_id=${user_id}, contact_no=${contact_no}`;
+      let desc = `Department created with d_id=${d_id} for f_id=${f_id}, d_name=${d_name}, user_id=${user_id}, email=${email}, contact_no=${contact_no}`;
       await conn.query("CALL LogAdminAction(?);", [desc]);
 
-      await conn.commit();
-
       // Send email notification to the department user
-      await mailer(email, email, password);
+      await mailer(
+        email,
+        "Registration succesfull",
+        `<h2>Department registered to examinations</h2>
+                <h4>User name : ${email}</h4>
+                <h4>Password : ${password}</h4>`
+      );
+      await conn.commit();
 
       return res.status(201).json({
         message: "Department created successfully",
@@ -410,7 +417,7 @@ export const createDegree = async (req, res, next) => {
       // Step 3: Link the degree with the department
       await conn.query("CALL LinkDegreeWithDepartment(?, ?);", [d_id, deg_id]);
 
-      let desc = `Degree created with deg_id=${deg_id} for d_id=${d_id}, deg_name=${deg_name}, short=${short}, levels=${levels}, no_of_sem_per_year=${no_of_sem_per_year}, contact_no=${contact_no}`;
+      let desc = `Degree created with deg_id=${deg_id} for d_id=${d_id}, deg_name=${deg_name}, short=${short}, levels=${levels}, no_of_sem_per_year=${no_of_sem_per_year}`;
       await conn.query("CALL LogAdminAction(?);", [desc]);
 
       await conn.commit();
@@ -782,9 +789,10 @@ export const getDegreeById = async (req, res, next) => {
         );
       }
 
-      return res
-        .status(200)
-        .json({ ...results[0][0], levels: results[0][0].levels.split(":") }); // First result set, first record
+      return res.status(200).json({
+        ...results[0][0],
+        levels: results[0][0].levels.split(":"),
+      }); // First result set, first record
     } catch (error) {
       console.error("Error fetching degree by ID:", error);
       return next(errorProvider(500, "Failed to fetch degree by ID"));

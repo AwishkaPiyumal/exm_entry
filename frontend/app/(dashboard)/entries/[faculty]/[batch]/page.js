@@ -71,8 +71,7 @@ const batches = () => {
   return (
     <div className="flex flex-col items-end md:items-center">
       <div
-        className={`flex self-stretch md:w-[70%] mb-2 mx-auto justify-between
-         `}
+        className={`flex flex-col sm:flex-row items-center gap-2 sm:gap-0 sm:items-stretch self-stretch w-[80%] md:w-[85%] lg:w-[70%] mb-2 mx-auto justify-between`}
       >
         <Button onClick={toggleModal} variant="outline">
           <FaPlus />
@@ -103,10 +102,13 @@ const batches = () => {
             </div>
           ))}
       </div>
-      <div className="md:w-[70%] flex gap-6 flex-wrap">
+      <div className="w-[80%] md:w-[85%] lg:w-[70%] flex flex-col sm:flex-row gap-6 flex-wrap">
         {isCurriculumsOfBatchDataLoading &&
           [1, 2, 3, 4, 5, 6].map((_, i) => (
-            <Skeleton key={i} className="w-[30%] h-32 max-w-[30%] rounded-xl" />
+            <Skeleton
+              key={i}
+              className="sm:w-[30%] h-32 sm:max-w-[30%] rounded-xl"
+            />
           ))}
         {curriculumsOfBatchData &&
           curriculumsOfBatchData.map((obj) => (
@@ -120,12 +122,14 @@ const batches = () => {
                   batch_id: batch_id,
                 },
               }}
-              className="min-w-[30%] max-w-[30%] hover:shadow-md rounded-xl"
+              className="sm:w-[30%] sm:max-w-[30%] hover:shadow-md rounded-xl"
               key={obj.sub_id}
             >
-              <Card>
+              <Card className="h-full flex flex-col justify-between">
                 <CardHeader>
-                  <CardTitle className="capitalize">{obj.sub_name}</CardTitle>
+                  <CardTitle className="uppercase text-wrap">
+                    {obj.sub_name}
+                  </CardTitle>
                   <CardDescription>{obj.sub_code}</CardDescription>
                 </CardHeader>
               </Card>
