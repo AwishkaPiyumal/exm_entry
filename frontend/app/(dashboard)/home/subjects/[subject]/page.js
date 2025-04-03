@@ -7,7 +7,7 @@ import { useQuery } from "@tanstack/react-query";
 import { checkSubjectExist } from "@/utils/apiRequests/curriculum.api";
 import { useUser } from "@/utils/useUser";
 
-const page = () => {
+const Subjects = () => {
   const searchParams = useSearchParams();
   const router = useRouter();
   const [roleId, setRoleID] = useState(null);
@@ -43,4 +43,4 @@ const page = () => {
   );
 };
 
-export default page;
+export default Subjects;

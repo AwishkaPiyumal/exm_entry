@@ -1,6 +1,6 @@
 import DepartmentDetails from "./DepartmentDetails";
 
-const departments = () => {
+const Departments = () => {
   return (
     <div className="flex justify-end md:justify-center">
       <div className="w-[80%] md:w-[85%] lg:w-[90%]">
@@ -10,4 +10,4 @@ const departments = () => {
   );
 };
 
-export default departments;
+export default Departments;

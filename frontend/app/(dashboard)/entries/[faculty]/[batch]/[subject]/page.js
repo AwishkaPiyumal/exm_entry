@@ -3,7 +3,7 @@
 import { usePathname, useSearchParams } from "next/navigation";
 import StudentDetails from "./StudentDetails";
 
-const users = () => {
+const Students = () => {
   const searchParams = useSearchParams();
 
   const sub_id = searchParams.get("sub_id");
@@ -25,4 +25,4 @@ const users = () => {
   );
 };
 
-export default users;
+export default Students;

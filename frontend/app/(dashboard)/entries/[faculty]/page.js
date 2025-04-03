@@ -15,7 +15,7 @@ import { useEffect, useState } from "react";
 import { numberToOrdinalWord, parseString } from "@/utils/functions";
 import { Skeleton } from "@/components/ui/skeleton";
 
-const faculties = () => {
+const Faculties = () => {
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
@@ -97,4 +97,4 @@ const faculties = () => {
   );
 };
 
-export default faculties;
+export default Faculties;

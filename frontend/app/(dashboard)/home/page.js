@@ -3,7 +3,7 @@
 import { useUser } from "@/utils/useUser";
 import { useEffect, useState } from "react";
 
-const dashboard = () => {
+const Home = () => {
   const { data: user, isLoading } = useUser();
   const [RoleComponent, setRoleComponent] = useState(null);
 
@@ -57,4 +57,4 @@ const dashboard = () => {
   return <RoleComponent />;
 };
 
-export default dashboard;
+export default Home;

@@ -15,7 +15,7 @@ import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-const users = () => {
+const Users = () => {
   const pathname = usePathname();
 
   const { data: noOfFacultiesData, isLoading: isNoOfFacultiesDataLoading } =
@@ -103,4 +103,4 @@ const users = () => {
   );
 };
 
-export default users;
+export default Users;

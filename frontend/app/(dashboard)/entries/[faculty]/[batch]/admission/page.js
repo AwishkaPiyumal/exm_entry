@@ -30,6 +30,7 @@ import html2canvas from "html2canvas";
 import ReactDOM from "react-dom";
 import AdmissionCard from "@/components/AdmissionCard";
 import { createRoot } from "react-dom/client";
+import Image from "next/image";
 
 const AdmissionPage = () => {
   const searchParams = useSearchParams();
@@ -225,10 +226,12 @@ const AdmissionPage = () => {
           generating ? "fixed" : "hidden"
         } left-0 top-0 w-full h-full flex justify-center items-center bg-white/35 z-50`}
       >
-        <img
+        <Image
           className="w-20 h-20 animate-spin "
           src="https://www.svgrepo.com/show/491270/loading-spinner.svg"
           alt="Loading icon"
+          width={80}
+          height={80}
         />
       </div>
 

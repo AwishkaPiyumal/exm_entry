@@ -60,6 +60,7 @@ const StudentDetails = () => {
     let status = e.split(":")[1];
     mutate({ id, status });
   };
+
   const columns = [
     {
       accessorKey: "user_name",

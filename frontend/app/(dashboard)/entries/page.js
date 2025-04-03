@@ -13,7 +13,7 @@ import { useQuery } from "@tanstack/react-query";
 import { getActiveFacultiesWithDepartmentsCount } from "@/utils/apiRequests/course.api";
 import { Skeleton } from "@/components/ui/skeleton";
 
-const entries = () => {
+const Entries = () => {
   const pathname = usePathname();
   const {
     data: noOfDepartmentsWithFacultyData,
@@ -65,4 +65,4 @@ const entries = () => {
   );
 };
 
-export default entries;
+export default Entries;

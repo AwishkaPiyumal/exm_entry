@@ -32,13 +32,14 @@ import html2canvas from "html2canvas";
 import { createRoot } from "react-dom/client";
 import AttendanceSheetTemplate from "@/components/AttendanceSheetTemplate";
 import AttendanceSheet from "@/components/AttendanceSheet";
+import Image from "next/image";
 
 function divideStudents(totalStudents, noOfGroups) {
   const groupSize = Math.ceil(totalStudents / noOfGroups);
   return groupSize;
 }
 
-const Page = () => {
+const Attendance = () => {
   const searchParams = useSearchParams();
   const batch_id = searchParams.get("batch_id");
   const sub_id = searchParams.get("sub_id");
@@ -281,10 +282,12 @@ const Page = () => {
           generating ? "fixed" : "hidden"
         } left-0 top-0 w-full h-full flex justify-center items-center bg-white/35 z-50`}
       >
-        <img
+        <Image
           className="w-20 h-20 animate-spin "
           src="https://www.svgrepo.com/show/491270/loading-spinner.svg"
           alt="Loading icon"
+          width={80}
+          height={80}
         />
       </div>
       <div className="w-[80%] mx-auto flex justify-center mb-4">
@@ -339,4 +342,4 @@ const Page = () => {
   );
 };
 
-export default Page;
+export default Attendance;

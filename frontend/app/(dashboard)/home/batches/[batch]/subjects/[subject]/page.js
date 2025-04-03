@@ -3,7 +3,7 @@
 import { useSearchParams } from "next/navigation";
 import StudentDetails from "./StudentDetails";
 
-const page = () => {
+const Subjects = () => {
   const searchParams = useSearchParams();
 
   const sub_id = searchParams.get("sub_id");
@@ -18,4 +18,4 @@ const page = () => {
   );
 };
 
-export default page;
+export default Subjects;

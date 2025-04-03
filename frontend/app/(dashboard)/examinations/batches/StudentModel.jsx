@@ -15,6 +15,7 @@ import {
   getStudentsByBatchId,
 } from "@/utils/apiRequests/batch.api";
 import { getFacStudentByBatchId } from "@/utils/apiRequests/user.api";
+import Image from "next/image";
 
 const StudentModel = ({
   feedId,
@@ -122,10 +123,12 @@ const StudentModel = ({
               </div>
             ) : (
               <div className="h-full w-full flex justify-center items-center">
-                <img
+                <Image
                   className="w-20 h-20 animate-spin "
                   src="https://www.svgrepo.com/show/491270/loading-spinner.svg"
                   alt="Loading icon"
+                  width={80}
+                  height={80}
                 />
               </div>
             )}

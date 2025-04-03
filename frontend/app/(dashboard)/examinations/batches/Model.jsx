@@ -62,6 +62,7 @@ import {
 } from "@/utils/apiRequests/batch.api";
 import { FaCircleCheck } from "react-icons/fa6";
 import { convertUTCToLocal } from "@/utils/functions";
+import Image from "next/image";
 
 const extractEndDates = (batchTimePeriodData) => {
   if (batchTimePeriodData && batchTimePeriodData.length) {
@@ -971,7 +972,7 @@ const Model = ({ editId, isOpen, setIsOpen, modalRef, setEditId }) => {
                               htmlFor="students_end"
                               className="w-32 inline-block"
                             >
-                              Students' deadline
+                              Students&apos; deadline
                             </Label>
                             <input
                               type="datetime-local"
@@ -992,7 +993,7 @@ const Model = ({ editId, isOpen, setIsOpen, modalRef, setEditId }) => {
                               htmlFor="lecturers_end"
                               className="w-32 inline-block"
                             >
-                              Lecturers' deadline
+                              Lecturers&apos; deadline
                             </Label>
                             <input
                               type="datetime-local"
@@ -1015,7 +1016,7 @@ const Model = ({ editId, isOpen, setIsOpen, modalRef, setEditId }) => {
                               htmlFor="hod_end"
                               className="w-32 inline-block"
                             >
-                              HOD's deadline
+                              HOD&apos;s deadline
                             </Label>
                             <input
                               type="datetime-local"
@@ -1036,7 +1037,7 @@ const Model = ({ editId, isOpen, setIsOpen, modalRef, setEditId }) => {
                               htmlFor="dean_end"
                               className="w-32 inline-block"
                             >
-                              Dean's deadline
+                              Dean&apos;s deadline
                             </Label>
                             <input
                               type="datetime-local"
@@ -1076,10 +1077,12 @@ const Model = ({ editId, isOpen, setIsOpen, modalRef, setEditId }) => {
                 </div>
               ) : (
                 <div className="h-full w-full flex justify-center items-center">
-                  <img
+                  <Image
                     className="w-20 h-20 animate-spin "
                     src="https://www.svgrepo.com/show/491270/loading-spinner.svg"
                     alt="Loading icon"
+                    width={80}
+                    height={80}
                   />
                 </div>
               )
@@ -1549,7 +1552,7 @@ const Model = ({ editId, isOpen, setIsOpen, modalRef, setEditId }) => {
                             htmlFor="students_end"
                             className="w-32 inline-block"
                           >
-                            Students' deadline
+                            Students&apos; deadline
                           </Label>
                           <input
                             type="datetime-local"
@@ -1570,7 +1573,7 @@ const Model = ({ editId, isOpen, setIsOpen, modalRef, setEditId }) => {
                             htmlFor="lecturers_end"
                             className="w-32 inline-block"
                           >
-                            Lecturers' deadline
+                            Lecturers&apos; deadline
                           </Label>
                           <input
                             type="datetime-local"
@@ -1593,7 +1596,7 @@ const Model = ({ editId, isOpen, setIsOpen, modalRef, setEditId }) => {
                             htmlFor="hod_end"
                             className="w-32 inline-block"
                           >
-                            HOD's deadline
+                            HOD&apos;s deadline
                           </Label>
                           <input
                             type="datetime-local"
@@ -1614,7 +1617,7 @@ const Model = ({ editId, isOpen, setIsOpen, modalRef, setEditId }) => {
                             htmlFor="dean_end"
                             className="w-32 inline-block"
                           >
-                            Dean's deadline
+                            Dean&apos;s deadline
                           </Label>
                           <input
                             type="datetime-local"

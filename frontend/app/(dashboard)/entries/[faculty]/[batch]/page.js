@@ -19,7 +19,7 @@ import { getStudentsWithoutIndexNumber } from "@/utils/apiRequests/entry.api";
 import { getDeadlinesForBatch } from "@/utils/apiRequests/batch.api";
 import { Skeleton } from "@/components/ui/skeleton";
 
-const batches = () => {
+const Batches = () => {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const [isOpen, setIsOpen] = useState(false);
@@ -154,4 +154,4 @@ const batches = () => {
   );
 };
 
-export default batches;
+export default Batches;

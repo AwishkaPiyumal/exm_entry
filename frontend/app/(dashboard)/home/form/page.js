@@ -146,7 +146,6 @@ const Form = (request) => {
                               </DrawerHeader>
                               <DrawerFooter className="flex justify-center items-center flex-row">
                                 <DrawerClose className="inline">
-                                  {" "}
                                   <Button
                                     onClick={() =>
                                       setRemovedSubjects((cur) => {

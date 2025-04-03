@@ -1,6 +1,6 @@
 import BatchesDetails from "./BatchesDetails";
 
-const batches = () => {
+const Batches = () => {
   return (
     <div className="flex justify-end md:justify-center">
       <div className="w-[80%] md:w-[85%] lg:w-[90%]">
@@ -10,4 +10,4 @@ const batches = () => {
   );
 };
 
-export default batches;
+export default Batches;

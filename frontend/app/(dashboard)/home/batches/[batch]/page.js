@@ -23,7 +23,7 @@ import { usePathname, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
 
-const page = () => {
+const Batches = () => {
   const [roleId, setRoleID] = useState(null);
   const { data: user } = useUser();
   const pathname = usePathname();
@@ -90,4 +90,4 @@ const page = () => {
   );
 };
 
-export default page;
+export default Batches;

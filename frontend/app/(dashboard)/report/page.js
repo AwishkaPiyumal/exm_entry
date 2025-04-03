@@ -11,7 +11,7 @@ import { useUser } from "@/utils/useUser";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 
-const page = () => {
+const Report = () => {
   const [roleId, setRoleID] = useState(null);
   const { data: user, isLoading } = useUser();
 
@@ -155,4 +155,4 @@ const page = () => {
   );
 };
 
-export default page;
+export default Report;

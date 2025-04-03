@@ -75,7 +75,7 @@ const AttendanceModel = ({
                 </li>
                 <li>
                   The 1st column is user name and remainings are attendance
-                  percentage (without '%').
+                  percentage (without &apos;%&apos;).
                 </li>
               </ul>
             </div>

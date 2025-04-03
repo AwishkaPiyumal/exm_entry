@@ -32,7 +32,7 @@ export default function RootLayout({ children }) {
             {children}
           </main>
           <Toaster />
-          <ReactQueryDevtools />
+          {/* <ReactQueryDevtools /> */}
         </ReactQueryProvider>
       </body>
     </html>

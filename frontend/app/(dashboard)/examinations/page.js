@@ -12,7 +12,7 @@ import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-const users = () => {
+const Examination = () => {
   const pathname = usePathname();
   const { data: noOfCurriculumsData, isLoading: isNoOfCurriculumsDataLoading } =
     useQuery({
@@ -75,4 +75,4 @@ const users = () => {
   );
 };
 
-export default users;
+export default Examination;
