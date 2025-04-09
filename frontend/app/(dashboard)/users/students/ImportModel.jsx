@@ -3,7 +3,7 @@
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { useEffect, useState } from "react";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { multipleStudentsRegister } from "@/utils/apiRequests/auth.api";
 import { GiCancel } from "react-icons/gi";
 import Dropzone from "@/components/Dropzone";
@@ -21,6 +21,7 @@ const ImportModel = ({ isImportOpen, setIsImportOpen, importModalRef }) => {
   const [file, setFile] = useState(null);
   const [f_id, setF_id] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
+  const queryClient = useQueryClient();
 
   const { data: facultyData } = useQuery({
     queryFn: getAllFaculties,
@@ -45,6 +46,7 @@ const ImportModel = ({ isImportOpen, setIsImportOpen, importModalRef }) => {
       toast.error("Operation failed. Please try again.");
       console.error("Error:", error);
     } finally {
+      queryClient.invalidateQueries(["students"]);
       setFile(null);
       setF_id(null);
       setIsLoading(false);

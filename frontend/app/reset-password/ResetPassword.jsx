@@ -31,7 +31,7 @@ const ResetPassword = () => {
     },
     onError: (err) => {
       if (err.status == 429) {
-        toast.error(err.response.data.message);
+        toast.error(err.response.data);
       } else {
         toast.error("Operation failed");
       }

@@ -75,11 +75,9 @@ const BatchesDetails = () => {
     mutationFn: updateBatchStatus,
     onSuccess: (res) => {
       queryClient.invalidateQueries(["batches"]);
-      setEditId("");
       toast.success(res.message);
     },
     onError: (err) => {
-      setEditId("");
       toast.error("Operation failed");
     },
   });
@@ -260,7 +258,8 @@ const BatchesDetails = () => {
   };
 
   const toggleFeedModal = () => {
-    isFeedOpen && setFeedId("") && setFeedDegShort("");
+    isFeedOpen && setFeedId("");
+    isFeedOpen && setFeedDegShort("");
     setIsFeedOpen((prev) => !prev);
   };
 

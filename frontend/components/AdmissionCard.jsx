@@ -118,10 +118,10 @@ const AdmissionCard = ({
         <thead>
           <tr>
             <th className="border border-black px-1 pb-2 text-xs">No.</th>
-            <th className="border border-black px-1 pb-2 text-xs w-16">
+            <th className="border border-black px-1 pb-2 text-xs w-[88px]">
               Subject Code
             </th>
-            <th className="border border-black px-1 pb-2 text-xs w-72">
+            <th className="border border-black px-1 pb-2 text-xs w-80">
               Subject
             </th>
             <th className="border border-black px-1 pb-2 text-xs">Eligible</th>
@@ -145,7 +145,7 @@ const AdmissionCard = ({
                       {index ? "" : ind + 1}
                     </div>
                   </td>
-                  <td className="border border-black text-sm w-20">
+                  <td className="border border-black text-sm w-[88px]">
                     <div className="flex items-center -mt-1 pb-2 leading-[1] pl-1">
                       {subjectObject[subId].sub_code}
                     </div>

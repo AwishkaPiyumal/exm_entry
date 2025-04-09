@@ -15,7 +15,6 @@ import { fileURLToPath } from "url";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const JWT_SECRET = process.env.JWT_SECRET;
 const FRONTEND_SERVER = process.env.FRONTEND_SERVER;
-const FRONTEND_PORT = process.env.FRONTEND_PORT;
 const MAX_FAILED_ATTEMPTS = 10;
 const LOCKOUT_DURATION_MINUTES = 15;
 
@@ -92,10 +91,31 @@ export const studentRegister = async (req, res, next) => {
       try {
         await mailer(
           email,
-          "Registration succesfull",
-          `<h2>You are successfully registered to examinations</h2>
-                <h4>User name : ${user_name}</h4>
-                <h4>Password : ${password}</h4>`
+          "Registration Successful",
+          `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 10px;">
+            <h2 style="color: #2c3e50;">🎓 Examination Registration Confirmation</h2>
+            <p>Dear ${user_name},</p>
+            <p>You have been successfully registered for the examinations.</p>
+        
+            <table style="margin: 20px 0; width: 100%;">
+              <tr>
+                <td style="font-weight: bold;">Username:</td>
+                <td>${user_name}</td>
+              </tr>
+              <tr>
+                <td style="font-weight: bold;">Password:</td>
+                <td>${password}</td>
+              </tr>
+            </table>
+        
+            <p>If you have any questions or need further assistance, please contact us at 
+              <a href="mailto:${process.env.ADMIN_EMAIL}">${process.env.ADMIN_EMAIL}</a>.
+            </p>
+        
+            <p style="margin-top: 30px;">Best regards,<br/>Examination Branch</p>
+          </div>
+          `
         );
       } catch (mailError) {
         return next(errorProvider(500, "Failed to send mail:" + mailError));
@@ -211,10 +231,31 @@ export const multipleStudentsRegister = async (req, res, next) => {
             try {
               await mailer(
                 email,
-                "Registration succesfull",
-                `<h2>You are successfully registered to examinations</h2>
-                <h4>User name : ${user_name}</h4>
-                <h4>Password : ${password}</h4>`
+                "Registration Successful",
+                `
+                <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 10px;">
+                  <h2 style="color: #2c3e50;">🎓 Examination Registration Confirmation</h2>
+                  <p>Dear ${user_name},</p>
+                  <p>You have been successfully registered for the examinations.</p>
+              
+                  <table style="margin: 20px 0; width: 100%;">
+                    <tr>
+                      <td style="font-weight: bold;">Username:</td>
+                      <td>${user_name}</td>
+                    </tr>
+                    <tr>
+                      <td style="font-weight: bold;">Password:</td>
+                      <td>${password}</td>
+                    </tr>
+                  </table>
+              
+                  <p>If you have any questions or need further assistance, please contact us at 
+                    <a href="mailto:${process.env.ADMIN_EMAIL}">${process.env.ADMIN_EMAIL}</a>.
+                  </p>
+              
+                  <p style="margin-top: 30px;">Best regards,<br/>Examination Branch</p>
+                </div>
+                `
               );
             } catch (mailError) {
               return next(
@@ -328,10 +369,31 @@ export const managerRegister = async (req, res, next) => {
       try {
         await mailer(
           email,
-          "Registration succesfull",
-          `<h2>You are successfully registered to examinations</h2>
-          <h4>User name : ${user_name}</h4>
-          <h4>Password : ${password}</h4>`
+          "Registration Successful",
+          `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 10px;">
+            <h2 style="color: #2c3e50;">🎓 Examination Registration Confirmation</h2>
+            <p>Dear ${user_name},</p>
+            <p>You have been successfully registered for the examinations.</p>
+        
+            <table style="margin: 20px 0; width: 100%;">
+              <tr>
+                <td style="font-weight: bold;">Username:</td>
+                <td>${user_name}</td>
+              </tr>
+              <tr>
+                <td style="font-weight: bold;">Password:</td>
+                <td>${password}</td>
+              </tr>
+            </table>
+        
+            <p>If you have any questions or need further assistance, please contact us at 
+              <a href="mailto:${process.env.ADMIN_EMAIL}">${process.env.ADMIN_EMAIL}</a>.
+            </p>
+        
+            <p style="margin-top: 30px;">Best regards,<br/>Examination Branch</p>
+          </div>
+          `
         );
       } catch (mailError) {
         errorProvider(500, "Failed to send mail:" + mailError);
@@ -397,8 +459,14 @@ export const login = async (req, res, next) => {
       });
 
       // Send response
+
       return res
-        .cookie("access-token", token, { httpOnly: true })
+        .cookie("access-token", token, {
+          httpOnly: true,
+          secure: process.env.NODE_ENV === "production", // Only use HTTPS in production
+          sameSite: process.env.NODE_ENV === "production" ? "None" : "Lax", // Allow cross-site cookie
+          maxAge: remember_me ? 2 * 24 * 60 * 60 * 1000 : 60 * 60 * 1000, // 2d or 1h
+        })
         .status(200)
         .json({ message: "Login successful" });
     } catch (error) {
@@ -556,15 +624,30 @@ export const forgotPassword = async (req, res, next) => {
       );
 
       // Send email
-      const resetLink = `http://${FRONTEND_SERVER}:${FRONTEND_PORT}/reset-password?token=${resetToken}`;
-      const htmlContent = `<p>You are receiving this email because you have requested a password reset for your account.</p>
-                           <p>Please click on the following link to reset your password:</p>
-                           <a href="${resetLink}">Reset Password</a>
-                           <p>OR</p>
-                           <p>Paste this into your browser to complete the process:</p>
-                           <p>${resetLink}</p>
-                           <p>This link will expire in 15 minutes.</p>
-                           <p>If you didn't request this, please ignore this email.</p>`;
+      const resetLink = `${FRONTEND_SERVER}/reset-password?token=${resetToken}`;
+      const htmlContent = `
+  <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 10px;">
+    <h2 style="color: #c0392b;">🔐 Password Reset Request</h2>
+    <p>You are receiving this email because you (or someone else) requested a password reset for your account.</p>
+
+    <div style="margin: 20px 0;">
+      <a href="${resetLink}" style="display: inline-block; padding: 10px 20px; background-color: #3498db; color: white; text-decoration: none; border-radius: 5px;">Reset Password</a>
+    </div>
+
+    <p>If the button doesn't work, copy and paste the following link in your browser:</p>
+    <p style="word-break: break-all;">${resetLink}</p>
+
+    <p>This link will expire in <strong>15 minutes</strong>.</p>
+    <p>If you did not request this, you can safely ignore this email.</p>
+
+    <p style="margin-top: 20px;">
+      For further information or inquiries, feel free to reach out to us at 
+      <a href="mailto:${process.env.ADMIN_EMAIL}">${process.env.ADMIN_EMAIL}</a>.
+    </p>
+
+    <p style="margin-top: 30px;">Best regards,<br/>Examination Branch</p>
+  </div>
+`;
       await mailer(email, "Password Reset Request", htmlContent);
 
       res.status(200).json({

@@ -1,11 +1,6 @@
 "use client";
 import React, { useEffect, useState } from "react";
-import UoV_Logo from "./../images/UoV_Logo.png";
-import Image from "next/image";
 import parse from "html-react-parser";
-import { FaCheck } from "react-icons/fa6";
-import { FaTimes } from "react-icons/fa";
-import { titleCase } from "@/utils/functions";
 
 let months = {
   0: "January",
@@ -186,10 +181,10 @@ const AttendanceSheet = ({
           >
             <thead>
               <tr>
-                <th className="border border-black px-1 py-3 font-semibold">
+                <th className="border border-black px-1 py-3 font-semibold w-1/2">
                   Index no
                 </th>
-                <th className="border border-black px-1 py-3 font-semibold">
+                <th className="border border-black px-1 py-3 font-semibold w-1/2">
                   Attendance
                 </th>
               </tr>
@@ -198,7 +193,7 @@ const AttendanceSheet = ({
               {splittedArray[ele]?.map((obj, i) => (
                 <tr className="h-[34px]" key={ele + "" + i}>
                   <td
-                    className={`border border-black ${
+                    className={`border border-black text-xs w-1/2 ${
                       obj && obj != "R" && obj != "M" && !obj.index_num
                         ? "bg-red-500"
                         : ""
@@ -226,7 +221,7 @@ const AttendanceSheet = ({
                       ""
                     )}
                   </td>
-                  <td className="border border-black "></td>
+                  <td className="border border-black  w-1/2"></td>
                 </tr>
               ))}
             </tbody>

@@ -52,11 +52,33 @@ export const createFaculty = async (req, res, next) => {
 
       await mailer(
         email,
-        "Registration succesfull",
-        `<h2>Faculty registered to examinations</h2>
-                <h4>User name : ${email}</h4>
-                <h4>Password : ${password}</h4>`
+        "Registration Successful",
+        `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 10px;">
+          <h2 style="color: #2c3e50;">🎓 Faculty Registered to Examinations</h2>
+          <p>Dear Faculty Dean,</p>
+          <p>You have been successfully registered to access the examination system.</p>
+      
+          <table style="margin: 20px 0; width: 100%;">
+            <tr>
+              <td style="font-weight: bold;">Username:</td>
+              <td>${email}</td>
+            </tr>
+            <tr>
+              <td style="font-weight: bold;">Password:</td>
+              <td>${password}</td>
+            </tr>
+          </table>
+      
+          <p>If you have any questions or need assistance, feel free to contact us at 
+            <a href="mailto:${process.env.ADMIN_EMAIL}">${process.env.ADMIN_EMAIL}</a>.
+          </p>
+      
+          <p style="margin-top: 30px;">Best regards,<br/>Examination Branch</p>
+        </div>
+        `
       );
+
       await conn.commit();
 
       return res.status(201).json({ message: "Faculty created successfully" });
@@ -234,11 +256,33 @@ export const createDepartment = async (req, res, next) => {
       // Send email notification to the department user
       await mailer(
         email,
-        "Registration succesfull",
-        `<h2>Department registered to examinations</h2>
-                <h4>User name : ${email}</h4>
-                <h4>Password : ${password}</h4>`
+        "Registration Successful",
+        `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 10px;">
+          <h2 style="color: #2c3e50;">🎓 Department Registered to Examinations</h2>
+          <p>Dear Department HOD,</p>
+          <p>You have been successfully registered to access the examination system.</p>
+      
+          <table style="margin: 20px 0; width: 100%;">
+            <tr>
+              <td style="font-weight: bold;">Username:</td>
+              <td>${email}</td>
+            </tr>
+            <tr>
+              <td style="font-weight: bold;">Password:</td>
+              <td>${password}</td>
+            </tr>
+          </table>
+      
+          <p>If you have any questions or need assistance, feel free to contact us at 
+            <a href="mailto:${process.env.ADMIN_EMAIL}">${process.env.ADMIN_EMAIL}</a>.
+          </p>
+      
+          <p style="margin-top: 30px;">Best regards,<br/>Examination Branch</p>
+        </div>
+        `
       );
+
       await conn.commit();
 
       return res.status(201).json({

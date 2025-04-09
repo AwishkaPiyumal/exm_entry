@@ -280,8 +280,19 @@ export const createOrUpdateAdmission = async (req, res, next) => {
           try {
             await mailer(
               mails,
-              `Report page updated`,
-              `<p>Report page is updated. you can see the final reports now</p>`
+              "📄 Report Page Updated",
+              `
+              <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 10px;">
+                <h2 style="color: #34495e;">📊 Report Page Updated</h2>
+                <p>The report page has been updated. You can now view the finalized reports.</p>
+            
+                <p>If you encounter any issues or have questions, please reach out to us at 
+                  <a href="mailto:${process.env.ADMIN_EMAIL}">${process.env.ADMIN_EMAIL}</a>.
+                </p>
+            
+                <p style="margin-top: 30px;">Regards,<br/>Examination Branch</p>
+              </div>
+              `
             );
           } catch (mailError) {
             console.error(`Failed to send mail:`, mailError);

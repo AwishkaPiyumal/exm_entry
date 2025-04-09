@@ -296,7 +296,7 @@ export const updateCurriculumStatus = async (req, res, next) => {
         );
       }
 
-      let desc = `Curriculum status changed for sub_id=${id} to status=${status}`;
+      let desc = `Curriculum status changed for sub_id=${sub_id} to status=${status}`;
       await conn.query("CALL LogAdminAction(?);", [desc]);
 
       return res

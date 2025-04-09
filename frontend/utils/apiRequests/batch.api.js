@@ -132,7 +132,7 @@ export const uploadAttendanceSheet = async (data) => {
           "Content-Type": "multipart/form-data",
         },
         withCredentials: true,
-        responseType: "blob", // Handle file responses
+        responseType: "blob",
       }
     );
 

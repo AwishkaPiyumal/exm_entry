@@ -34,9 +34,7 @@ const StudentModel = ({
     refetch: oldDataRefetch,
     isLoading: isLoadingOldData,
   } = useQuery({
-    queryFn: () => {
-      return getStudentsByBatchId(feedId);
-    },
+    queryFn: () => getStudentsByBatchId(feedId),
     queryKey: ["students", "batch", feedId],
     enabled: false,
   });
@@ -50,7 +48,7 @@ const StudentModel = ({
   const { status, mutate } = useMutation({
     mutationFn: addStudentsToTheBatchTable,
     onSuccess: (res) => {
-      queryClient.invalidateQueries(["batches"]);
+      queryClient.invalidateQueries(["batches"], ["students", "batch", feedId]);
       setFeedId("");
       setFeedDegShort("");
       toast.success(res.message);
@@ -71,6 +69,12 @@ const StudentModel = ({
   };
 
   useEffect(() => {
+    if (feedId) {
+      oldDataRefetch();
+    }
+  }, [feedId, isFeedOpen]);
+
+  useEffect(() => {
     if (oldData && oldData.length) setSelectedStudents(oldData);
   }, [oldData]);
 
@@ -83,7 +87,7 @@ const StudentModel = ({
             className={`sm:max-w-[575px] w-full transition-all duration-300 bg-white rounded-lg shadow-lg p-6 h-[95vh]`}
           >
             <div className="flex justify-between items-center border-b pb-2 mb-4">
-              <h3 className="text-lg font-semibold">Batch</h3>
+              <h3 className="text-lg font-semibold">Students</h3>
 
               <GiCancel
                 className="text-2xl hover:cursor-pointer hover:text-zinc-700"
@@ -103,7 +107,6 @@ const StudentModel = ({
                   setSelectedStudents={setSelectedStudents}
                   selectedStudents={selectedStudents}
                   feedDegShort={feedDegShort}
-                  oldDataRefetch={oldDataRefetch}
                   feedId={feedId}
                   oldData={oldData}
                   stuData={stuData}

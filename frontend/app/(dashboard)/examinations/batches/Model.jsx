@@ -743,10 +743,21 @@ const Model = ({ editId, isOpen, setIsOpen, modalRef, setEditId }) => {
                                     name="sem_no"
                                     onChange={(e) => onFormDataChanged(e)}
                                     className="h-4 w-4 shadow focus:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 accent-black"
+                                    disabled={
+                                      data
+                                        ? new Date(data?.application_open) <
+                                          new Date()
+                                        : false
+                                    }
                                   />
                                   <Label
                                     htmlFor={`s${ind + 1}`}
-                                    className="cursor-pointer"
+                                    className={`cursor-pointer ${
+                                      data &&
+                                      new Date(data?.application_open) <
+                                        new Date() &&
+                                      "text-slate-400"
+                                    }`}
                                   >
                                     {ind + 1}
                                   </Label>
@@ -1264,43 +1275,46 @@ const Model = ({ editId, isOpen, setIsOpen, modalRef, setEditId }) => {
                       >
                         <Label className="text-right">Level</Label>
                         <div className="flex col-span-3 gap-4 flex-wrap">
-                          {specificDegreeData?.levels?.map((item) => (
-                            <div
-                              className="flex items-center space-x-2"
-                              key={item}
-                            >
-                              <input
-                                type="radio"
-                                value={item}
-                                id={`l${item}`}
-                                checked={formData.level == item}
-                                name="level"
-                                onChange={(e) => onFormDataChanged(e)}
-                                onBlur={(e) => {
-                                  e.target.value = e.target.value.trim();
-                                  onFormDataChanged(e);
-                                }}
-                                className="h-4 w-4 shadow focus:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 accent-black"
-                                disabled={
-                                  data
-                                    ? new Date(data?.application_open) <
-                                      new Date()
-                                    : false
-                                }
-                              />
-                              <Label
-                                htmlFor={`l${item}`}
-                                className={`cursor-pointer ${
-                                  data &&
-                                  new Date(data?.application_open) <
-                                    new Date() &&
-                                  "text-slate-400"
-                                }`}
+                          {specificDegreeData?.levels
+                            ?.map((level) => Number(level))
+                            ?.sort((a, b) => a - b)
+                            ?.map((item) => (
+                              <div
+                                className="flex items-center space-x-2"
+                                key={item}
                               >
-                                {item}
-                              </Label>
-                            </div>
-                          ))}
+                                <input
+                                  type="radio"
+                                  value={item}
+                                  id={`l${item}`}
+                                  checked={formData.level == item}
+                                  name="level"
+                                  onChange={(e) => onFormDataChanged(e)}
+                                  onBlur={(e) => {
+                                    e.target.value = e.target.value.trim();
+                                    onFormDataChanged(e);
+                                  }}
+                                  className="h-4 w-4 shadow focus:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 accent-black"
+                                  disabled={
+                                    data
+                                      ? new Date(data?.application_open) <
+                                        new Date()
+                                      : false
+                                  }
+                                />
+                                <Label
+                                  htmlFor={`l${item}`}
+                                  className={`cursor-pointer ${
+                                    data &&
+                                    new Date(data?.application_open) <
+                                      new Date() &&
+                                    "text-slate-400"
+                                  }`}
+                                >
+                                  {item}
+                                </Label>
+                              </div>
+                            ))}
                         </div>
                       </div>
                       <div
@@ -1325,10 +1339,21 @@ const Model = ({ editId, isOpen, setIsOpen, modalRef, setEditId }) => {
                                   name="sem_no"
                                   onChange={(e) => onFormDataChanged(e)}
                                   className="h-4 w-4 shadow focus:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 accent-black"
+                                  disabled={
+                                    data
+                                      ? new Date(data?.application_open) <
+                                        new Date()
+                                      : false
+                                  }
                                 />
                                 <Label
                                   htmlFor={`s${ind + 1}`}
-                                  className="cursor-pointer"
+                                  className={`cursor-pointer ${
+                                    data &&
+                                    new Date(data?.application_open) <
+                                      new Date() &&
+                                    "text-slate-400"
+                                  }`}
                                 >
                                   {ind + 1}
                                 </Label>

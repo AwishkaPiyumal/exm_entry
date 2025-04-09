@@ -39,8 +39,8 @@ const StudentSelection = ({
   selectedStudents,
   setSelectedStudents,
   feedId,
-  oldDataRefetch,
-  oldData,stuData
+  oldData,
+  stuData,
 }) => {
   const [sorting, setSorting] = useState([]);
   const [columnFilters, setColumnFilters] = useState([]);
@@ -49,8 +49,6 @@ const StudentSelection = ({
   const [filteredStuData, setFilteredStuData] = useState([]);
   const [searchValue, setSearchValue] = useState("");
   const [isOpenDatePassed, setIsOpenDatePassed] = useState(true);
-
- 
 
   const { data } = useQuery({
     queryFn: () => getBatchOpenDate(feedId),
@@ -200,12 +198,6 @@ const StudentSelection = ({
       rowSelection,
     },
   });
-
-  useEffect(() => {
-    if (feedId) {
-      oldDataRefetch();
-    }
-  }, [feedId]);
 
   return (
     <div className="w-full h-[60vh] mb-2">

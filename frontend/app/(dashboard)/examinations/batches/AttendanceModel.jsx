@@ -67,7 +67,7 @@ const AttendanceModel = ({
               <ul className="list-disc text-sm">
                 <li>Ensure the file is in CSV format.</li>
                 <li>
-                  The first row must be a header row (User name and subjects
+                  The first row must be a header row (User name and subject
                   codes ex:IT&nbsp;3143(P)).
                 </li>
                 <li>

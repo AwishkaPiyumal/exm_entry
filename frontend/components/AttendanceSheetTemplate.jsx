@@ -9,14 +9,9 @@ const RichTextEditorIndividual = dynamic(
 );
 
 import React, { useEffect, useState } from "react";
-import UoV_Logo from "./../images/UoV_Logo.png";
-import Image from "next/image";
-import { useQuery } from "@tanstack/react-query";
 import {
   getDayName,
   getModifiedDate,
-  numberToOrdinalWord,
-  parseString,
   sortByExamType,
   titleCase,
 } from "@/utils/functions";

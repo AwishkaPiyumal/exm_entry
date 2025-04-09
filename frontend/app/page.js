@@ -33,7 +33,11 @@ const Login = () => {
       router.replace("/home");
     },
     onError: (err) => {
-      toast.error("Invalid username or password");
+      if (err.status == 429) {
+        toast.error(err.response.data);
+      } else {
+        toast.error("Invalid username or password");
+      }
       setFormData((cur) => ({ ...cur, password: "" }));
     },
   });

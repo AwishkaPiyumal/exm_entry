@@ -90,9 +90,13 @@ const DegreeDetails = () => {
       cell: ({ row }) => {
         return (
           <div>
-            {row.original.levels.split(":").map((level) => (
-              <div key={level}>Level&nbsp;{level}</div>
-            ))}
+            {row.original.levels
+              .split(":")
+              .map((level) => Number(level))
+              .sort((a, b) => a - b)
+              .map((level) => (
+                <div key={level}>Level&nbsp;{level}</div>
+              ))}
           </div>
         );
       },
